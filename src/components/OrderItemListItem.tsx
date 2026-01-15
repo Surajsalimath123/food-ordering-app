@@ -3,10 +3,6 @@ import type { OrderItem } from '@/types';
 import React from 'react';
 import { Image, StyleSheet, Text, View } from 'react-native';
 
-// fallback image (same one used in many tutorials)
-const defaultPizzaImage =
-  'https://notjustdev-dummy.s3.us-east-2.amazonaws.com/food/default.png';
-
 type Props = {
   item: OrderItem;
 };
@@ -15,7 +11,11 @@ export default function OrderItemListItem({ item }: Props) {
   return (
     <View style={styles.container}>
       <Image
-        source={{ uri: item.products.image ?? defaultPizzaImage }}
+        source={{
+          uri:
+            item.products.image ||
+            'https://notjustdev-dummy.s3.us-east-2.amazonaws.com/food/default.png',
+        }}
         style={styles.image}
         resizeMode="contain"
       />
@@ -25,7 +25,7 @@ export default function OrderItemListItem({ item }: Props) {
 
         <View style={styles.subtitleContainer}>
           <Text style={styles.price}>${item.products.price.toFixed(2)}</Text>
-          <Text>Size: {item.size}</Text>
+          <Text style={styles.subtitle}>Size: {item.size}</Text>
         </View>
       </View>
 
@@ -44,8 +44,8 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   image: {
-    width: 60,
-    height: 60,
+    width: 50,
+    aspectRatio: 1,
   },
   title: {
     fontWeight: '600',
@@ -57,6 +57,9 @@ const styles = StyleSheet.create({
     gap: 8,
     alignItems: 'center',
   },
+  subtitle: {
+    color: 'gray',
+  },
   price: {
     color: Colors.light.tint,
     fontWeight: 'bold',
@@ -64,5 +67,6 @@ const styles = StyleSheet.create({
   quantity: {
     fontWeight: '700',
     fontSize: 16,
+    marginLeft: 10,
   },
 });
