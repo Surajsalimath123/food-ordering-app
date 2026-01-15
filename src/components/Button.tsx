@@ -13,13 +13,16 @@ type ButtonProps = {
 } & PressableProps;
 
 const Button = forwardRef<View | null, ButtonProps>(
-  ({ text, style, ...pressableProps }, ref) => {
+  ({ text, style, disabled, ...pressableProps }, ref) => {
     return (
       <Pressable
         ref={ref}
         {...pressableProps}
+        disabled={disabled}
         style={(state) => [
           styles.container,
+          state.pressed && styles.pressed,
+          disabled && styles.disabled,
           typeof style === 'function' ? style(state) : style,
         ]}
       >
@@ -41,6 +44,12 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: 'white',
+  },
+  pressed: {
+    opacity: 0.85,
+  },
+  disabled: {
+    opacity: 0.5,
   },
 });
 

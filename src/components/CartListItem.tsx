@@ -1,0 +1,88 @@
+import Colors from '@/constants/Colors';
+import { useCart } from '@/providers/CartProvider';
+import type { CartItem } from '@/types';
+import { FontAwesome } from '@expo/vector-icons';
+import { Image, StyleSheet, Text, View } from 'react-native';
+
+type Props = { cartItem: CartItem };
+
+export default function CartListItem({ cartItem }: Props) {
+  const { updateQuantity } = useCart();
+
+  return (
+    <View style={styles.container}>
+      <Image
+        source={{
+          uri:
+            cartItem.product.image ||
+            'https://notjustdev-dummy.s3.us-east-2.amazonaws.com/food/default.png',
+        }}
+        style={styles.image}
+        resizeMode="contain"
+      />
+
+      <View style={{ flex: 1 }}>
+        <Text style={styles.title}>{cartItem.product.name}</Text>
+        <View style={styles.subtitleContainer}>
+          <Text style={styles.price}>${cartItem.product.price.toFixed(2)}</Text>
+          <Text>Size: {cartItem.size}</Text>
+        </View>
+      </View>
+
+      <View style={styles.quantitySelector}>
+        <FontAwesome
+          onPress={() => updateQuantity(cartItem.id, -1)}
+          name="minus"
+          color="gray"
+          style={{ padding: 6 }}
+        />
+        <Text style={styles.quantity}>{cartItem.quantity}</Text>
+        <FontAwesome
+          onPress={() => updateQuantity(cartItem.id, 1)}
+          name="plus"
+          color="gray"
+          style={{ padding: 6 }}
+        />
+      </View>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {
+    backgroundColor: 'white',
+    borderRadius: 10,
+    padding: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  image: {
+    width: 75,
+    aspectRatio: 1,
+    marginRight: 10,
+  },
+  title: {
+    fontWeight: '600',
+    fontSize: 16,
+    marginBottom: 4,
+  },
+  subtitleContainer: {
+    flexDirection: 'row',
+    gap: 8,
+    alignItems: 'center',
+  },
+  price: {
+    color: Colors.light.tint,
+    fontWeight: 'bold',
+  },
+  quantitySelector: {
+    flexDirection: 'row',
+    gap: 10,
+    alignItems: 'center',
+    marginLeft: 10,
+  },
+  quantity: {
+    fontWeight: '600',
+    fontSize: 16,
+  },
+});
