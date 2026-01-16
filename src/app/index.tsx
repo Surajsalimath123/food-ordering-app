@@ -1,30 +1,28 @@
-import Button from '@/components/Button';
-import { Link } from 'expo-router';
-import { StyleSheet, View } from 'react-native';
+import { useAuth } from '@/providers/AuthProvider';
+import { Redirect } from 'expo-router';
+import React from 'react';
+import { ActivityIndicator, View } from 'react-native';
 
-export default function HomeScreen() {
-  return (
-    <View style={styles.container}>
-      <Link href="/(user)" asChild>
-        <Button text="Go to User App" />
-      </Link>
+export default function Index() {
+  const { session, profile, isLoading } = useAuth();
 
-      <Link href="/(admin)" asChild>
-        <Button text="Go to Admin App" />
-      </Link>
+  if (isLoading) {
+    return (
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+        <ActivityIndicator />
+      </View>
+    );
+  }
 
-      <Link href="/sign-in" asChild>
-        <Button text="Sign in" />
-      </Link>
-    </View>
-  );
+  // ❌ Not logged in
+  if (!session) {
+    return <Redirect href="/(auth)/sign-in" />;
+  }
+
+  // ✅ Logged in: route by role
+  if (profile?.role === 'ADMIN') {
+    return <Redirect href="/(admin)" />;
+  }
+
+  return <Redirect href="/(user)" />;
 }
-
-const styles = StyleSheet.create({
-  container: {
-    padding: 20,
-    gap: 10,
-    justifyContent: 'center',
-    flex: 1,
-  },
-});

@@ -1,79 +1,246 @@
-import CartListItem from '@/components/CartListItem';
-import { useCart } from '@/providers/CartProvider';
-import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
-import { FlatList, StyleSheet, Text, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { router } from 'expo-router';
+import React, { useState } from 'react';
+import { Alert, FlatList, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
-const FOOTER_HEIGHT = 64;
+import CartListItem from '@/components/CartListItem';
+import Colors from '@/constants/Colors';
+import { supabase } from '@/lib/supabase';
+import { useCart } from '@/providers/CartProvider';
 
 export default function CartScreen() {
-  const { items, total } = useCart();
-  const insets = useSafeAreaInsets();
-  const tabBarHeight = useBottomTabBarHeight();
+  const { items, total, clearCart, updateQuantity } = useCart(); // ✅ make sure CartProvider exports clearCart()
+  const [placing, setPlacing] = useState(false);
 
-  // Keep footer ABOVE the tab bar (and above the home indicator)
-  const footerBottom = tabBarHeight + insets.bottom;
+  const canPlace = items.length > 0 && !placing;
+
+  const placeOrder = async () => {
+    if (!items.length) return;
+
+    try {
+      setPlacing(true);
+
+      // ✅ get logged in user
+      const { data: authData, error: authErr } = await supabase.auth.getUser();
+      if (authErr || !authData?.user) {
+        Alert.alert('Not signed in', 'Please sign in again.');
+        return;
+      }
+      const userId = authData.user.id;
+
+      // ✅ 1) create order
+      const { data: order, error: orderErr } = await supabase
+        .from('orders')
+        .insert({ user_id: userId, status: 'New' })
+        .select()
+        .single();
+
+      if (orderErr) {
+        Alert.alert('Order failed', orderErr.message);
+        return;
+      }
+
+      // ✅ 2) create order items
+      const orderItems = items.map((ci) => ({
+        order_id: order.id,
+        product_id: ci.product.id,
+        quantity: ci.quantity,
+        size: ci.size,
+      }));
+
+      const { error: itemsErr } = await supabase.from('order_items').insert(orderItems);
+
+      if (itemsErr) {
+        Alert.alert('Order failed', itemsErr.message);
+        return;
+      }
+
+      clearCart();
+      router.push('/(user)/orders'); // or router.replace(...)
+    } catch (e: any) {
+      Alert.alert('Order failed', e?.message ?? 'Something went wrong');
+    } finally {
+      setPlacing(false);
+    }
+  };
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top }]}>
-      <FlatList
-        data={items}
-        keyExtractor={(item) => item.id}
-        renderItem={({ item }) => <CartListItem cartItem={item} />}
-        contentContainerStyle={[
-          styles.listContent,
-          {
-            // Make sure list can scroll behind footer + tab bar safely
-            paddingBottom: FOOTER_HEIGHT + footerBottom + 12,
-          },
-        ]}
-        ListEmptyComponent={
-          <Text style={styles.emptyText}>Your cart is empty.</Text>
-        }
-      />
+    <SafeAreaView style={styles.safe} edges={['top']}>
+      <View style={styles.container}>
+        {/* Header */}
+        <View style={styles.header}>
+          <Text style={styles.headerTitle}>Cart</Text>
+          <Text style={styles.headerSubtitle}>
+            {items.length} item{items.length === 1 ? '' : 's'}
+          </Text>
+        </View>
 
-      {/* Sticky footer */}
-      <View style={[styles.footer, { bottom: footerBottom }]}>
-        <Text style={styles.totalText}>Total</Text>
-        <Text style={styles.totalAmount}>${total.toFixed(2)}</Text>
+        {/* List */}
+        <FlatList
+          data={items}
+          keyExtractor={(item) => item.id}
+          renderItem={({ item }) => (
+  <CartListItem
+    cartItem={item}
+    onDecrease={() => updateQuantity(item.id, -1)}
+    onIncrease={() => updateQuantity(item.id, +1)}
+  />
+)}
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={[
+            styles.listContent,
+            items.length === 0 && styles.listEmptyContent,
+          ]}
+          ListEmptyComponent={
+            <View style={styles.empty}>
+              <Text style={styles.emptyTitle}>Your cart is empty</Text>
+              <Text style={styles.emptySub}>
+                Add items from the Menu and they will appear here.
+              </Text>
+            </View>
+          }
+        />
+
+        {/* Bottom bar */}
+        <SafeAreaView style={styles.bottomSafe} edges={['bottom']}>
+          <View style={styles.bottomBar}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.totalLabel}>Total</Text>
+              <Text style={styles.totalHint}>Taxes calculated at checkout</Text>
+            </View>
+
+            <View style={styles.rightArea}>
+              <Text style={styles.totalValue}>${total.toFixed(2)}</Text>
+
+              <Pressable
+                onPress={placeOrder}
+                disabled={!canPlace}
+                style={({ pressed }) => [
+                  styles.placeButton,
+                  !canPlace && styles.placeButtonDisabled,
+                  pressed && canPlace && styles.placeButtonPressed,
+                ]}
+              >
+                <Text style={styles.placeButtonText}>
+                  {placing ? 'Placing...' : 'Place order'}
+                </Text>
+              </Pressable>
+            </View>
+          </View>
+        </SafeAreaView>
       </View>
-    </View>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#F2F2F2' },
+  safe: {
+    flex: 1,
+    backgroundColor: '#f2f2f2',
+  },
+  container: {
+    flex: 1,
+    backgroundColor: '#f2f2f2',
+  },
 
-  listContent: { padding: 10, gap: 10 },
-
-  emptyText: {
-    textAlign: 'center',
-    marginTop: 40,
-    fontSize: 16,
+  header: {
+    paddingHorizontal: 16,
+    paddingTop: 6,
+    paddingBottom: 10,
+  },
+  headerTitle: {
+    fontSize: 26,
+    fontWeight: '800',
+    color: '#111',
+  },
+  headerSubtitle: {
+    marginTop: 4,
+    fontSize: 13,
     color: '#666',
+    fontWeight: '600',
   },
 
-  footer: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    height: FOOTER_HEIGHT,
-    backgroundColor: '#FAFAFA',
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: '#ccc',
-    paddingHorizontal: 20,
-    paddingTop: 12,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+  listContent: {
+    paddingHorizontal: 12,
+    paddingTop: 8,
+    paddingBottom: 160, // ✅ room for total + button
+  },
+  listEmptyContent: {
+    flexGrow: 1,
+    justifyContent: 'center',
+    paddingBottom: 180,
+  },
+
+  empty: {
     alignItems: 'center',
-
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: -2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 6,
+    paddingHorizontal: 24,
+  },
+  emptyTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    marginBottom: 6,
+    color: '#111',
+  },
+  emptySub: {
+    fontSize: 14,
+    color: '#666',
+    textAlign: 'center',
+    fontWeight: '500',
   },
 
-  totalText: { fontSize: 16, color: '#444', fontWeight: '600' },
-  totalAmount: { fontSize: 22, fontWeight: '900', color: '#000' },
+  bottomSafe: {
+    backgroundColor: 'white',
+  },
+  bottomBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+
+    backgroundColor: 'white',
+    borderTopWidth: 1,
+    borderTopColor: '#e6e6e6',
+  },
+
+  totalLabel: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#333',
+  },
+  totalHint: {
+    marginTop: 2,
+    fontSize: 12,
+    color: '#888',
+    fontWeight: Platform.OS === 'ios' ? '600' : '500',
+  },
+
+  rightArea: {
+    alignItems: 'flex-end',
+    gap: 8,
+  },
+
+  totalValue: {
+    fontSize: 22,
+    fontWeight: '900',
+    color: '#111',
+  },
+
+  placeButton: {
+    backgroundColor: Colors.light.tint,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 12,
+  },
+  placeButtonPressed: {
+    opacity: 0.75,
+  },
+  placeButtonDisabled: {
+    backgroundColor: '#cfcfcf',
+  },
+  placeButtonText: {
+    color: 'white',
+    fontWeight: '800',
+  },
 });

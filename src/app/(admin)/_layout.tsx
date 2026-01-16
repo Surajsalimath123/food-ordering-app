@@ -1,13 +1,19 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Tabs } from 'expo-router';
 
-export default function AdminLayout() {
+export default function AdminTabsLayout() {
   return (
-    <Tabs screenOptions={{ headerShown: false }}>
+    <Tabs
+      screenOptions={{
+        headerShown: false,
+        tabBarActiveTintColor: '#1976d2',
+      }}
+    >
+      {/* ✅ Visible tabs */}
       <Tabs.Screen
         name="menu"
         options={{
-          title: 'Products',
+          title: 'Menu',
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="pizza-outline" size={size} color={color} />
           ),
@@ -34,16 +40,8 @@ export default function AdminLayout() {
         }}
       />
 
-      <Tabs.Screen
-        name="cart"
-        options={{
-          title: 'Cart',
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="cart-outline" size={size} color={color} />
-          ),
-        }}
-      />
-
+      {/* ✅ Hidden routes (do NOT show in tab bar) */}
+      <Tabs.Screen name="cart" options={{ href: null }} />
       <Tabs.Screen name="index" options={{ href: null }} />
     </Tabs>
   );

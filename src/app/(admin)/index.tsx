@@ -1,5 +1,5 @@
 import { Redirect } from 'expo-router';
 
-export default function OrdersIndex() {
-  return <Redirect href="/(admin)/orders/list" />;
+export default function AdminIndex() {
+  return <Redirect href="/(admin)/menu" />;
 }

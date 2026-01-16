@@ -1,56 +1,60 @@
-import Colors from '@/constants/Colors';
-import type { Product } from '@/types/Product';
-import { Link, useSegments } from 'expo-router';
-import { Image, Pressable, StyleSheet, Text } from 'react-native';
+import type { Product } from '@/types';
+import React from 'react';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
+import RemoteImage from './RemoteImage';
 
 type Props = {
   product: Product;
+  onPress?: () => void; // ✅ optional (fixes TS error too)
 };
 
-export default function ProductListItem({ product }: Props) {
-  const segments = useSegments(); // e.g. ['(user)', 'menu'] OR ['(admin)', 'menu']
-  const group = segments[0] ?? '(user)'; // fallback just in case
-
+export default function ProductListItem({ product, onPress }: Props) {
   return (
-    <Link
-  href={{ pathname: `/${group}/menu/${product.id}` } as any}
-  asChild
->
-  <Pressable style={styles.container}>
-    <Image
-      source={{
-        uri:
-          product.image ||
-          'https://notjustdev-dummy.s3.us-east-2.amazonaws.com/food/default.png',
-      }}
-      style={styles.image}
-      resizeMode="contain"
-    />
-    <Text style={styles.title}>{product.name}</Text>
-    <Text style={styles.price}>${product.price.toFixed(2)}</Text>
-  </Pressable>
-</Link>
+    <Pressable
+      onPress={onPress}
+      disabled={!onPress}
+      style={({ pressed }) => [styles.card, pressed && onPress && styles.pressed]}
+    >
+      <RemoteImage path={product.image} style={styles.image} />
 
+      <View style={styles.info}>
+        <Text style={styles.title} numberOfLines={1}>
+          {product.name}
+        </Text>
+        <Text style={styles.price}>${product.price.toFixed(2)}</Text>
+      </View>
+    </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
+  card: {
+    flex: 1, // ✅ KEY: allows 2 columns
     backgroundColor: 'white',
-    borderRadius: 20,
-    padding: 10,
+    borderRadius: 16,
+    padding: 12,
+  },
+  pressed: {
+    opacity: 0.75,
   },
   image: {
     width: '100%',
-    aspectRatio: 1,
+    aspectRatio: 1, // ✅ square so it won’t become huge
+    borderRadius: 12,
+    backgroundColor: '#f2f2f2',
+  },
+  info: {
+    marginTop: 10,
   },
   title: {
-    fontWeight: '600',
-    marginVertical: 6,
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#111',
   },
   price: {
-    color: Colors.light.tint,
-    fontWeight: 'bold',
+    marginTop: 4,
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#1976d2',
   },
 });

@@ -1,48 +1,51 @@
-import Colors from '@/constants/Colors';
-import { useCart } from '@/providers/CartProvider';
 import type { CartItem } from '@/types';
-import { FontAwesome } from '@expo/vector-icons';
-import { Image, StyleSheet, Text, View } from 'react-native';
+import React from 'react';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
+import RemoteImage from './RemoteImage';
 
-type Props = { cartItem: CartItem };
+type Props = {
+  cartItem: CartItem;
+  onIncrease: () => void;
+  onDecrease: () => void;
+};
 
-export default function CartListItem({ cartItem }: Props) {
-  const { updateQuantity } = useCart();
+export default function CartListItem({ cartItem, onIncrease, onDecrease }: Props) {
+  const { product, quantity, size } = cartItem;
 
   return (
     <View style={styles.container}>
-      <Image
-        source={{
-          uri:
-            cartItem.product.image ||
-            'https://notjustdev-dummy.s3.us-east-2.amazonaws.com/food/default.png',
-        }}
-        style={styles.image}
-        resizeMode="contain"
-      />
+      <RemoteImage path={product.image} style={styles.image} />
 
-      <View style={{ flex: 1 }}>
-        <Text style={styles.title}>{cartItem.product.name}</Text>
-        <View style={styles.subtitleContainer}>
-          <Text style={styles.price}>${cartItem.product.price.toFixed(2)}</Text>
-          <Text>Size: {cartItem.size}</Text>
+      <View style={styles.info}>
+        <Text style={styles.title} numberOfLines={1}>
+          {product.name}
+        </Text>
+
+        <View style={styles.metaRow}>
+          <Text style={styles.price}>${product.price.toFixed(2)}</Text>
+          <Text style={styles.dot}>·</Text>
+          <Text style={styles.meta}>Size: {size}</Text>
         </View>
       </View>
 
-      <View style={styles.quantitySelector}>
-        <FontAwesome
-          onPress={() => updateQuantity(cartItem.id, -1)}
-          name="minus"
-          color="gray"
-          style={{ padding: 6 }}
-        />
-        <Text style={styles.quantity}>{cartItem.quantity}</Text>
-        <FontAwesome
-          onPress={() => updateQuantity(cartItem.id, 1)}
-          name="plus"
-          color="gray"
-          style={{ padding: 6 }}
-        />
+      <View style={styles.qtyWrap}>
+        <Pressable
+          onPress={onDecrease}
+          style={({ pressed }) => [styles.qtyButton, pressed && styles.pressed]}
+          hitSlop={10}
+        >
+          <Text style={styles.qtySymbol}>−</Text>
+        </Pressable>
+
+        <Text style={styles.qtyText}>{quantity}</Text>
+
+        <Pressable
+          onPress={onIncrease}
+          style={({ pressed }) => [styles.qtyButton, pressed && styles.pressed]}
+          hitSlop={10}
+        >
+          <Text style={styles.qtySymbol}>+</Text>
+        </Pressable>
       </View>
     </View>
   );
@@ -50,39 +53,39 @@ export default function CartListItem({ cartItem }: Props) {
 
 const styles = StyleSheet.create({
   container: {
-    backgroundColor: 'white',
-    borderRadius: 10,
-    padding: 8,
     flexDirection: 'row',
     alignItems: 'center',
+    backgroundColor: '#f6f6f6',
+    borderRadius: 16,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: '#eee',
   },
   image: {
-    width: 75,
-    aspectRatio: 1,
-    marginRight: 10,
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: '#eee',
+    marginRight: 12,
   },
-  title: {
-    fontWeight: '600',
-    fontSize: 16,
-    marginBottom: 4,
-  },
-  subtitleContainer: {
-    flexDirection: 'row',
-    gap: 8,
+  info: { flex: 1, paddingRight: 10 },
+  title: { fontSize: 16, fontWeight: '800' },
+
+  metaRow: { flexDirection: 'row', alignItems: 'center', marginTop: 4 },
+  price: { color: '#1976d2', fontWeight: '900' },
+  dot: { marginHorizontal: 8, color: '#999' },
+  meta: { color: '#777', fontWeight: '700' },
+
+  qtyWrap: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  qtyButton: {
+    width: 34,
+    height: 34,
+    borderRadius: 12,
     alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#f2f2f2',
   },
-  price: {
-    color: Colors.light.tint,
-    fontWeight: 'bold',
-  },
-  quantitySelector: {
-    flexDirection: 'row',
-    gap: 10,
-    alignItems: 'center',
-    marginLeft: 10,
-  },
-  quantity: {
-    fontWeight: '600',
-    fontSize: 16,
-  },
+  pressed: { opacity: 0.7 },
+  qtySymbol: { fontSize: 20, fontWeight: '900', color: '#222' },
+  qtyText: { width: 22, textAlign: 'center', fontWeight: '900', fontSize: 16 },
 });

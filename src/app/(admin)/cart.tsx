@@ -7,11 +7,10 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 const FOOTER_HEIGHT = 64;
 
 export default function CartScreen() {
-  const { items, total } = useCart();
+  const { items, total, updateQuantity } = useCart(); // ✅ added updateQuantity
   const insets = useSafeAreaInsets();
   const tabBarHeight = useBottomTabBarHeight();
 
-  // Keep footer ABOVE the tab bar (and above the home indicator)
   const footerBottom = tabBarHeight + insets.bottom;
 
   return (
@@ -19,20 +18,22 @@ export default function CartScreen() {
       <FlatList
         data={items}
         keyExtractor={(item) => item.id}
-        renderItem={({ item }) => <CartListItem cartItem={item} />}
+        renderItem={({ item }) => (
+          <CartListItem
+            cartItem={item}
+            onDecrease={() => updateQuantity(item.id, -1)}
+            onIncrease={() => updateQuantity(item.id, +1)}
+          />
+        )}
         contentContainerStyle={[
           styles.listContent,
-          {
-            // Make sure list can scroll behind footer + tab bar safely
-            paddingBottom: FOOTER_HEIGHT + footerBottom + 12,
-          },
+          { paddingBottom: FOOTER_HEIGHT + footerBottom + 12 },
         ]}
         ListEmptyComponent={
           <Text style={styles.emptyText}>Your cart is empty.</Text>
         }
       />
 
-      {/* Sticky footer */}
       <View style={[styles.footer, { bottom: footerBottom }]}>
         <Text style={styles.totalText}>Total</Text>
         <Text style={styles.totalAmount}>${total.toFixed(2)}</Text>
@@ -43,7 +44,6 @@ export default function CartScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F2F2F2' },
-
   listContent: { padding: 10, gap: 10 },
 
   emptyText: {

@@ -1,7 +1,29 @@
+import { useAuth } from '@/providers/AuthProvider';
 import { Ionicons } from '@expo/vector-icons';
-import { Tabs } from 'expo-router';
+import { Redirect, Tabs } from 'expo-router';
+import React from 'react';
+import { ActivityIndicator, View } from 'react-native';
 
-export default function TabLayout() {
+export default function UserLayout() {
+  const { session, profile, isLoading } = useAuth();
+
+  if (isLoading) {
+    return (
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+        <ActivityIndicator />
+      </View>
+    );
+  }
+
+  if (!session) {
+    return <Redirect href="/(auth)/sign-in" />;
+  }
+
+  // ✅ if admin, don't show user tabs
+  if (profile?.role === 'ADMIN') {
+    return <Redirect href="/(admin)" />;
+  }
+
   return (
     <Tabs screenOptions={{ headerShown: false }}>
       <Tabs.Screen name="index" options={{ href: null }} />
@@ -17,14 +39,14 @@ export default function TabLayout() {
       />
 
       <Tabs.Screen
-        name="orders"
-        options={{
-          title: 'Orders',
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="receipt-outline" size={size} color={color} />
-          ),
-        }}
-      />
+  name="orders"
+  options={{
+    title: 'Orders',
+    // optional but makes it explicit:
+    href: '/(user)/orders',
+  }}
+/>
+
 
       <Tabs.Screen
         name="profile"

@@ -1,18 +1,12 @@
-import { createMaterialTopTabNavigator } from '@react-navigation/material-top-tabs';
-import { withLayoutContext } from 'expo-router';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { Stack } from 'expo-router';
 
-const { Navigator } = createMaterialTopTabNavigator();
-
-export const TopTabs = withLayoutContext(Navigator);
-
-export default function OrdersTabsLayout() {
+export default function OrdersListLayout() {
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: 'white' }} edges={['top']}>
-      <TopTabs>
-        <TopTabs.Screen name="index" options={{ title: 'Active' }} />
-        <TopTabs.Screen name="archive" options={{ title: 'Archive' }} />
-      </TopTabs>
-    </SafeAreaView>
+    <Stack
+      screenOptions={{
+        headerShown: false,
+        contentStyle: { backgroundColor: 'white' },
+      }}
+    />
   );
 }

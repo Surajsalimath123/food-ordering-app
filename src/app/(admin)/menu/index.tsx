@@ -1,66 +1,77 @@
+// src/app/(admin)/menu/index.tsx
+import { useProductList } from '@/api/products';
 import ProductListItem from '@/components/ProductListItem';
-import { useProducts } from '@/providers/ProductsProvider';
-import { Link } from 'expo-router';
+import Colors from '@/constants/Colors';
+import { Ionicons } from '@expo/vector-icons';
+import { router } from 'expo-router';
 import React from 'react';
-import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
+import { FlatList, Pressable, StyleSheet, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export default function AdminMenuScreen() {
-  const { products } = useProducts();
+  const { data: products, isLoading, error, refetch } = useProductList();
+  const { bottom } = useSafeAreaInsets();
 
   return (
-    <View style={styles.screen} pointerEvents="box-none">
+    <View style={styles.container}>
       <FlatList
-        data={products}
-        keyExtractor={(item) => String(item.id)}
+        data={products ?? []}
         numColumns={2}
-        contentContainerStyle={styles.listContent}
+        keyExtractor={(item) => String(item.id)}
         columnWrapperStyle={styles.row}
-        showsVerticalScrollIndicator={false}
+        contentContainerStyle={[styles.listContent, { paddingBottom: bottom + 120 }]}
+        refreshing={isLoading}
+        onRefresh={refetch}
         renderItem={({ item }) => (
-          <Link href={`/(admin)/menu/${item.id}`} asChild>
-            <Pressable>
-              <ProductListItem product={item as any} />
-            </Pressable>
-          </Link>
+          <ProductListItem
+            product={item}
+            onPress={() => router.push(`/(admin)/menu/${item.id}` as any)}
+          />
         )}
+        ListEmptyComponent={<View style={{ height: 30 }} />}
       />
 
       {/* FAB */}
-      <View style={styles.fabWrap} pointerEvents="box-none">
-        <Link href="/(admin)/menu/create" asChild>
-          <Pressable style={styles.fab} hitSlop={12}>
-            <Text style={styles.fabText}>+</Text>
-          </Pressable>
-        </Link>
-      </View>
+      <Pressable
+        onPress={() => router.push('/(admin)/menu/create' as any)}
+        style={({ pressed }) => [
+          styles.fab,
+          { bottom: bottom + 18 },
+          pressed && { opacity: 0.8 },
+        ]}
+      >
+        <Ionicons name="add" size={24} color="white" />
+      </Pressable>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1 },
+  container: { flex: 1, backgroundColor: '#f2f2f2' },
 
-  listContent: { gap: 10, padding: 10, paddingBottom: 30 },
-  row: { gap: 10 },
-
-  fabWrap: {
-    ...StyleSheet.absoluteFillObject,
-    justifyContent: 'flex-end',
-    alignItems: 'flex-end',
-    padding: 18,
+  listContent: {
+    padding: 12,
+    gap: 12, // ✅ space between rows (iOS ok)
   },
+
+  row: {
+    gap: 12, // ✅ space between columns
+  },
+
   fab: {
+    position: 'absolute',
+    right: 18,
     width: 56,
     height: 56,
     borderRadius: 28,
-    justifyContent: 'center',
+    backgroundColor: Colors.light.tint,
     alignItems: 'center',
-    backgroundColor: '#1677ff',
-    elevation: 6,
+    justifyContent: 'center',
+
     shadowColor: '#000',
+    shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.2,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 3 },
+    shadowRadius: 8,
+    elevation: 6,
   },
-  fabText: { color: 'white', fontSize: 30, fontWeight: '800', marginTop: -2 },
 });

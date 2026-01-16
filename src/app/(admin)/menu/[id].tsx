@@ -1,35 +1,87 @@
+import {
+  useDeleteProduct,
+  useProduct,
+  useUpdateProduct,
+} from '@/api/products';
 import ProductForm, { FormValues } from '@/components/admin/ProductForm';
-import { useProducts } from '@/providers/ProductsProvider';
 import { router, useLocalSearchParams } from 'expo-router';
-import React, { useMemo } from 'react';
-import { Alert, Text } from 'react-native';
+import React from 'react';
+import { ActivityIndicator, Alert, Text, View } from 'react-native';
 
 export default function EditProductScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
+
   const productId = Number(id);
+  const isValidId = Number.isFinite(productId) && productId > 0;
 
-  const { getById, updateProduct, deleteProduct } = useProducts();
+  const { data: product, isLoading, error } = useProduct(productId);
 
-  const product = useMemo(() => getById(productId), [productId, getById]);
+  const { mutateAsync: updateProduct, isPending: isUpdating } = useUpdateProduct();
+  const { mutateAsync: deleteProduct, isPending: isDeleting } = useDeleteProduct();
 
-  if (!product) return <Text style={{ padding: 16 }}>Product not found.</Text>;
+  // invalid route param
+  if (!isValidId) {
+    return (
+      <View style={{ padding: 16 }}>
+        <Text>Invalid product id</Text>
+      </View>
+    );
+  }
 
-  const onUpdate = (values: FormValues) => {
-    updateProduct(productId, {
-      name: values.name,
-      price: Number(values.price),
-      image: values.image ?? null,
-    });
+  if (isLoading) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center' }}>
+        <ActivityIndicator />
+      </View>
+    );
+  }
 
-    Alert.alert('Updated ✅', 'In-memory (UI only).', [
-      { text: 'OK', onPress: () => router.back() },
-    ]);
+  if (error || !product) {
+    // IMPORTANT: this will help you see the exact Supabase error in Metro logs
+    console.log('❌ Failed to load product:', error);
+    return (
+      <View style={{ padding: 16 }}>
+        <Text>Failed to load product</Text>
+      </View>
+    );
+  }
+
+  const onUpdate = async (values: FormValues) => {
+    try {
+      await updateProduct({
+        id: productId,
+        name: values.name,
+        price: Number(values.price),
+        image: values.image ?? null,
+      });
+
+      Alert.alert('Updated ✅', 'Saved to Supabase.', [
+        { text: 'OK', onPress: () => router.back() },
+      ]);
+    } catch (e: any) {
+      console.log('❌ Update failed:', e);
+      Alert.alert('Update failed', e?.message ?? 'Unknown error');
+    }
   };
 
-  const onDelete = () => {
-    deleteProduct(productId);
-    Alert.alert('Deleted ✅', 'In-memory (UI only).', [
-      { text: 'OK', onPress: () => router.back() },
+  const onDelete = async () => {
+    Alert.alert('Delete product?', 'This will remove it from Supabase.', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            await deleteProduct(productId);
+            Alert.alert('Deleted ✅', 'Removed from Supabase.', [
+              { text: 'OK', onPress: () => router.back() },
+            ]);
+          } catch (e: any) {
+            console.log('❌ Delete failed:', e);
+            Alert.alert('Delete failed', e?.message ?? 'Unknown error');
+          }
+        },
+      },
     ]);
   };
 
