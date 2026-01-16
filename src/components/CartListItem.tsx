@@ -1,7 +1,7 @@
+import RemoteImage from '@/components/RemoteImage';
 import type { CartItem } from '@/types';
 import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import RemoteImage from './RemoteImage';
 
 type Props = {
   cartItem: CartItem;
@@ -14,7 +14,7 @@ export default function CartListItem({ cartItem, onIncrease, onDecrease }: Props
 
   return (
     <View style={styles.container}>
-      <RemoteImage path={product.image} style={styles.image} />
+      <RemoteImage path={product.image} style={styles.image} resizeMode="cover" />
 
       <View style={styles.info}>
         <Text style={styles.title} numberOfLines={1}>
@@ -31,8 +31,8 @@ export default function CartListItem({ cartItem, onIncrease, onDecrease }: Props
       <View style={styles.qtyWrap}>
         <Pressable
           onPress={onDecrease}
-          style={({ pressed }) => [styles.qtyButton, pressed && styles.pressed]}
           hitSlop={10}
+          style={({ pressed }) => [styles.qtyButton, pressed && styles.pressed]}
         >
           <Text style={styles.qtySymbol}>−</Text>
         </Pressable>
@@ -41,8 +41,8 @@ export default function CartListItem({ cartItem, onIncrease, onDecrease }: Props
 
         <Pressable
           onPress={onIncrease}
-          style={({ pressed }) => [styles.qtyButton, pressed && styles.pressed]}
           hitSlop={10}
+          style={({ pressed }) => [styles.qtyButton, pressed && styles.pressed]}
         >
           <Text style={styles.qtySymbol}>+</Text>
         </Pressable>
@@ -61,15 +61,19 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#eee',
   },
+
   image: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
-    backgroundColor: '#eee',
+    width: 54,
+    height: 54,
+    borderRadius: 27,
+    backgroundColor: '#eaeaea',
     marginRight: 12,
+    overflow: 'hidden',
   },
+
   info: { flex: 1, paddingRight: 10 },
-  title: { fontSize: 16, fontWeight: '800' },
+
+  title: { fontSize: 16, fontWeight: '800', color: '#111' },
 
   metaRow: { flexDirection: 'row', alignItems: 'center', marginTop: 4 },
   price: { color: '#1976d2', fontWeight: '900' },
@@ -77,6 +81,7 @@ const styles = StyleSheet.create({
   meta: { color: '#777', fontWeight: '700' },
 
   qtyWrap: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+
   qtyButton: {
     width: 34,
     height: 34,
@@ -86,6 +91,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#f2f2f2',
   },
   pressed: { opacity: 0.7 },
+
   qtySymbol: { fontSize: 20, fontWeight: '900', color: '#222' },
   qtyText: { width: 22, textAlign: 'center', fontWeight: '900', fontSize: 16 },
 });

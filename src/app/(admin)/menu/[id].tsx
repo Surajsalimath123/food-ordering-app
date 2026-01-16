@@ -19,7 +19,6 @@ export default function EditProductScreen() {
   const { mutateAsync: updateProduct, isPending: isUpdating } = useUpdateProduct();
   const { mutateAsync: deleteProduct, isPending: isDeleting } = useDeleteProduct();
 
-  // invalid route param
   if (!isValidId) {
     return (
       <View style={{ padding: 16 }}>
@@ -37,7 +36,6 @@ export default function EditProductScreen() {
   }
 
   if (error || !product) {
-    // IMPORTANT: this will help you see the exact Supabase error in Metro logs
     console.log('❌ Failed to load product:', error);
     return (
       <View style={{ padding: 16 }}>
@@ -88,6 +86,7 @@ export default function EditProductScreen() {
   return (
     <ProductForm
       mode="edit"
+      loading={isUpdating || isDeleting}
       defaultValues={{
         name: product.name,
         price: String(product.price),

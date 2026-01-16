@@ -1,30 +1,31 @@
+import RemoteImage from '@/components/RemoteImage';
 import Colors from '@/constants/Colors';
 import type { OrderItem } from '@/types';
 import React from 'react';
-import { Image, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 
 type Props = {
   item: OrderItem;
 };
 
 export default function OrderItemListItem({ item }: Props) {
+  const product = item.products;
+
   return (
     <View style={styles.container}>
-      <Image
-        source={{
-          uri:
-            item.products.image ||
-            'https://notjustdev-dummy.s3.us-east-2.amazonaws.com/food/default.png',
-        }}
+      <RemoteImage
+        path={product.image}
         style={styles.image}
         resizeMode="contain"
       />
 
       <View style={{ flex: 1 }}>
-        <Text style={styles.title}>{item.products.name}</Text>
+        <Text style={styles.title} numberOfLines={1}>
+          {product.name}
+        </Text>
 
         <View style={styles.subtitleContainer}>
-          <Text style={styles.price}>${item.products.price.toFixed(2)}</Text>
+          <Text style={styles.price}>${product.price.toFixed(2)}</Text>
           <Text style={styles.subtitle}>Size: {item.size}</Text>
         </View>
       </View>
@@ -45,7 +46,10 @@ const styles = StyleSheet.create({
   },
   image: {
     width: 50,
-    aspectRatio: 1,
+    height: 50,          // ✅ RemoteImage needs explicit height
+    borderRadius: 10,
+    backgroundColor: '#f2f2f2',
+    overflow: 'hidden',
   },
   title: {
     fontWeight: '600',

@@ -1,44 +1,31 @@
+import { supabase } from '@/lib/supabase';
+import * as ImagePicker from 'expo-image-picker';
 import { Stack, router } from 'expo-router';
 import React, { useState } from 'react';
-import { Alert, Image, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import {
+    ActivityIndicator,
+    Alert,
+    Image,
+    Pressable,
+    StyleSheet,
+    Text,
+    TextInput,
+    View,
+} from 'react-native';
 
-import { decode } from 'base64-arraybuffer';
-import { randomUUID } from 'expo-crypto';
-import * as FileSystem from 'expo-file-system';
-import * as ImagePicker from 'expo-image-picker';
-
-import { supabase } from '@/lib/supabase';
-import type { Product } from '@/types';
-
-const DEFAULT_IMAGE =
-  'https://notjustdev-dummy.s3.us-east-2.amazonaws.com/food/default.png';
+type PickedImage = ImagePicker.ImagePickerAsset;
 
 export default function CreateProductScreen() {
   const [name, setName] = useState('');
-  const [price, setPrice] = useState('');
-  const [image, setImage] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
-
-  const validateInput = () => {
-    if (!name.trim()) {
-      Alert.alert('Validation', 'Please enter a product name.');
-      return false;
-    }
-
-    const p = Number(price);
-    if (Number.isNaN(p) || p <= 0) {
-      Alert.alert('Validation', 'Please enter a valid price.');
-      return false;
-    }
-
-    return true;
-  };
+  const [price, setPrice] = useState(''); // keep as string for TextInput
+  const [image, setImage] = useState<PickedImage | null>(null);
+  const [loading, setLoading] = useState(false);
 
   const pickImage = async () => {
-    // optional: request permission
+    // Ask permission (esp. important on iOS)
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== 'granted') {
-      Alert.alert('Permission required', 'Please allow photo library access to pick an image.');
+      Alert.alert('Permission required', 'Please allow photo access to select an image.');
       return;
     }
 
@@ -49,57 +36,81 @@ export default function CreateProductScreen() {
     });
 
     if (!result.canceled) {
-      setImage(result.assets[0].uri);
+      setImage(result.assets[0]);
     }
   };
 
-  const uploadImage = async (imageUri: string | null): Promise<string | null> => {
-    if (!imageUri || !imageUri.startsWith('file://')) return null;
+  const uploadImageToSupabase = async (picked: PickedImage) => {
+    // Create a unique file path in the bucket
+    const uri = picked.uri;
 
-    const base64 = await FileSystem.readAsStringAsync(imageUri, { encoding: 'base64' });
-    const filePath = `${randomUUID()}.png`;
+    const extFromUri = uri.split('.').pop()?.toLowerCase();
+    const ext = extFromUri && extFromUri.length <= 5 ? extFromUri : 'jpg';
 
-    const { data, error } = await supabase.storage
+    const fileName = `${Date.now()}-${Math.random().toString(16).slice(2)}.${ext}`;
+    const filePath = `products/${fileName}`; // folder inside bucket
+
+    // Convert local file URI -> Blob
+    const res = await fetch(uri);
+    const blob = await res.blob();
+
+    const { error: uploadError } = await supabase.storage
       .from('product-images')
-      .upload(filePath, decode(base64), { contentType: 'image/png' });
+      .upload(filePath, blob, {
+        contentType: blob.type || `image/${ext}`,
+        upsert: true,
+      });
 
-    if (error) {
-      console.log('Upload error:', error.message);
-      Alert.alert('Upload failed', error.message);
-      return null;
+    if (uploadError) {
+      throw uploadError;
     }
 
-    return data?.path ?? null;
+    // Generate a public URL (bucket is PUBLIC)
+    const { data } = supabase.storage.from('product-images').getPublicUrl(filePath);
+
+    return {
+      filePath,
+      publicUrl: data.publicUrl,
+    };
   };
 
   const onCreate = async () => {
-    if (!validateInput()) return;
+    if (!name.trim()) {
+      Alert.alert('Validation', 'Please enter a name');
+      return;
+    }
 
-    setSaving(true);
+    const numericPrice = Number(price);
+    if (!price || Number.isNaN(numericPrice)) {
+      Alert.alert('Validation', 'Please enter a valid price');
+      return;
+    }
+
     try {
-      const uploadedPath = await uploadImage(image);
+      setLoading(true);
 
-      // ✅ IMPORTANT: image must always exist on Product (string | null)
-      const newProduct: Omit<Product, 'id'> = {
-        name: name.trim(),
-        price: Number(price),
-        image: uploadedPath, // null if no upload
-      };
+      let imageUrl: string | null = null;
 
-      const { error } = await supabase.from('products').insert(newProduct);
-
-      if (error) {
-        console.log('Insert error:', error.message);
-        Alert.alert('Create failed', error.message);
-        return;
+      if (image) {
+        const uploaded = await uploadImageToSupabase(image);
+        imageUrl = uploaded.publicUrl;
       }
 
-      setName('');
-      setPrice('');
-      setImage(null);
+      const { error } = await supabase.from('products').insert({
+        name: name.trim(),
+        price: numericPrice,
+        image: imageUrl, // store the public URL (or null)
+      });
+
+      if (error) throw error;
+
+      Alert.alert('Success', 'Product created!');
       router.back();
+    } catch (e: any) {
+      console.log(e);
+      Alert.alert('Error', e?.message ?? 'Something went wrong');
     } finally {
-      setSaving(false);
+      setLoading(false);
     }
   };
 
@@ -107,20 +118,23 @@ export default function CreateProductScreen() {
     <View style={styles.container}>
       <Stack.Screen options={{ title: 'Create Product' }} />
 
-      <Pressable onPress={pickImage} style={styles.imagePicker}>
-        <Image
-          source={{ uri: image ?? DEFAULT_IMAGE }}
-          style={styles.image}
-          resizeMode="contain"
-        />
-        <Text style={styles.imageText}>Tap to select image</Text>
+      <Pressable onPress={pickImage} style={styles.imageBox}>
+        {image ? (
+          <Image source={{ uri: image.uri }} style={styles.image} />
+        ) : (
+          <Text style={styles.noImageText}>No image</Text>
+        )}
+      </Pressable>
+
+      <Pressable onPress={pickImage} style={styles.linkButton}>
+        <Text style={styles.linkButtonText}>Select Image</Text>
       </Pressable>
 
       <Text style={styles.label}>Name</Text>
       <TextInput
         value={name}
         onChangeText={setName}
-        placeholder="e.g. Pepperoni Pizza"
+        placeholder="Margherita"
         style={styles.input}
       />
 
@@ -128,42 +142,56 @@ export default function CreateProductScreen() {
       <TextInput
         value={price}
         onChangeText={setPrice}
-        placeholder="e.g. 12.99"
+        placeholder="12.99"
         keyboardType="decimal-pad"
         style={styles.input}
       />
 
-      <Pressable onPress={onCreate} disabled={saving} style={styles.button}>
-        <Text style={styles.buttonText}>{saving ? 'Saving...' : 'Create'}</Text>
+      <Pressable onPress={onCreate} style={styles.primaryButton} disabled={loading}>
+        {loading ? (
+          <ActivityIndicator />
+        ) : (
+          <Text style={styles.primaryButtonText}>Create</Text>
+        )}
       </Pressable>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, padding: 16, gap: 12, backgroundColor: 'white' },
-  imagePicker: {
-    borderWidth: 1,
-    borderColor: '#ddd',
+  container: { flex: 1, padding: 16, gap: 10, backgroundColor: 'white' },
+
+  imageBox: {
+    width: '100%',
+    height: 180,
     borderRadius: 12,
-    padding: 12,
+    backgroundColor: '#e5e7eb',
     alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
   },
-  image: { width: '100%', height: 200 },
-  imageText: { marginTop: 8, fontWeight: '600' },
-  label: { fontWeight: '600', marginTop: 6 },
+  image: { width: '100%', height: '100%' },
+  noImageText: { color: '#6b7280' },
+
+  linkButton: { alignSelf: 'center', paddingVertical: 10 },
+  linkButtonText: { color: '#2563eb', fontWeight: '600' },
+
+  label: { fontSize: 14, color: '#111827', marginTop: 4 },
   input: {
     borderWidth: 1,
-    borderColor: '#ddd',
+    borderColor: '#d1d5db',
     borderRadius: 10,
-    padding: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    backgroundColor: '#fff',
   },
-  button: {
+
+  primaryButton: {
     marginTop: 10,
-    backgroundColor: 'black',
-    padding: 14,
+    backgroundColor: '#2563eb',
+    paddingVertical: 14,
     borderRadius: 12,
     alignItems: 'center',
   },
-  buttonText: { color: 'white', fontWeight: '700' },
+  primaryButtonText: { color: 'white', fontWeight: '700' },
 });

@@ -1,114 +1,169 @@
+// src/components/admin/ProductForm.tsx
+import { uploadProductImageFromUri } from '@/lib/storage';
+import * as ImagePicker from 'expo-image-picker';
 import React, { useMemo, useState } from 'react';
-import { Alert, Image, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import {
+    ActivityIndicator,
+    Alert,
+    Image,
+    Pressable,
+    StyleSheet,
+    Text,
+    TextInput,
+    View,
+} from 'react-native';
 
 export type FormValues = {
   name: string;
-  price: string; // keep as string for TextInput
-  image?: string | null;
+  price: string; // keep string for TextInput
+  image: string | null; // store PUBLIC URL here
 };
 
-type CreateProps = {
-  mode: 'create';
-  defaultValues?: Partial<FormValues>;
-  onCreate: (values: FormValues) => void;
+type Props = {
+  mode: 'create' | 'edit';
+  defaultValues?: FormValues;
+  onCreate?: (values: FormValues) => Promise<void>;
+  onUpdate?: (values: FormValues) => Promise<void>;
+  onDelete?: () => void;
+
+  // optional: pass pending flags if you have them
+  loading?: boolean;
 };
 
-type EditProps = {
-  mode: 'edit';
-  defaultValues: FormValues;
-  onUpdate: (values: FormValues) => void;
-  onDelete: () => void;
-};
-
-type Props = CreateProps | EditProps;
-
-export default function ProductForm(props: Props) {
-  const initial = useMemo<FormValues>(() => {
-    if (props.mode === 'edit') return props.defaultValues;
-    return {
-      name: props.defaultValues?.name ?? '',
-      price: props.defaultValues?.price ?? '',
-      image: props.defaultValues?.image ?? null,
-    };
-  }, [props]);
+export default function ProductForm({
+  mode,
+  defaultValues,
+  onCreate,
+  onUpdate,
+  onDelete,
+  loading,
+}: Props) {
+  const initial = useMemo<FormValues>(
+    () =>
+      defaultValues ?? {
+        name: '',
+        price: '',
+        image: null,
+      },
+    [defaultValues]
+  );
 
   const [name, setName] = useState(initial.name);
   const [price, setPrice] = useState(initial.price);
-  const [image, setImage] = useState<string | null>(initial.image ?? null);
+  const [image, setImage] = useState<string | null>(initial.image);
 
-  const primaryLabel = props.mode === 'edit' ? 'Update' : 'Create';
+  const [uploading, setUploading] = useState(false);
 
-  const onSubmit = () => {
-    const cleanName = name.trim();
-    const cleanPrice = price.trim();
+  const pickAndUploadImage = async () => {
+    try {
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert(
+          'Permission required',
+          'Please allow photo access to select an image.'
+        );
+        return;
+      }
 
-    if (!cleanName) {
-      Alert.alert('Missing name', 'Please enter a product name.');
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        quality: 0.8,
+      });
+
+      if (result.canceled) return;
+
+      const asset = result.assets[0];
+      if (!asset?.uri) return;
+
+      setUploading(true);
+
+      const uploaded = await uploadProductImageFromUri(asset.uri);
+
+      // store public url in form
+      setImage(uploaded.publicUrl);
+    } catch (e: any) {
+      console.log('❌ Image upload failed:', e);
+      Alert.alert('Image upload failed', e?.message ?? 'Unknown error');
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const submit = async () => {
+    if (!name.trim()) {
+      Alert.alert('Validation', 'Please enter a name');
       return;
     }
-    const num = Number(cleanPrice);
-    if (!cleanPrice || Number.isNaN(num)) {
-      Alert.alert('Invalid price', 'Please enter a valid number.');
+
+    const numericPrice = Number(price);
+    if (!price || Number.isNaN(numericPrice)) {
+      Alert.alert('Validation', 'Please enter a valid price');
       return;
     }
 
-    const payload: FormValues = { name: cleanName, price: cleanPrice, image };
+    const values: FormValues = {
+      name: name.trim(),
+      price: String(numericPrice),
+      image: image ?? null,
+    };
 
-    if (props.mode === 'edit') props.onUpdate(payload);
-    else props.onCreate(payload);
+    try {
+      if (mode === 'create') {
+        if (!onCreate) throw new Error('onCreate not provided');
+        await onCreate(values);
+      } else {
+        if (!onUpdate) throw new Error('onUpdate not provided');
+        await onUpdate(values);
+      }
+    } catch (e: any) {
+      console.log('❌ Save failed:', e);
+      Alert.alert('Save failed', e?.message ?? 'Unknown error');
+    }
   };
 
-  const onPickImage = () => {
-    // UI-only for now (wire ImagePicker later)
-    Alert.alert('Select Image', 'Wire Image Picker later (UI only).');
-  };
-
-  const confirmDelete = () => {
-    if (props.mode !== 'edit') return;
-    Alert.alert('Delete product?', 'This action cannot be undone.', [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Delete', style: 'destructive', onPress: props.onDelete },
-    ]);
-  };
+  const isBusy = Boolean(loading || uploading);
 
   return (
     <View style={styles.container}>
-      <View style={styles.imageBox}>
+      <Pressable onPress={pickAndUploadImage} style={styles.imageBox} disabled={isBusy}>
         {image ? (
-          <Image source={{ uri: image }} style={styles.image} resizeMode="cover" />
+          <Image source={{ uri: image }} style={styles.image} />
         ) : (
           <Text style={styles.noImageText}>No image</Text>
         )}
-      </View>
+      </Pressable>
 
-      <Pressable onPress={onPickImage}>
-        <Text style={styles.selectImage}>Select Image</Text>
+      <Pressable onPress={pickAndUploadImage} disabled={isBusy} style={styles.linkButton}>
+        <Text style={styles.linkButtonText}>
+          {uploading ? 'Uploading...' : 'Select Image'}
+        </Text>
       </Pressable>
 
       <Text style={styles.label}>Name</Text>
-      <TextInput
-        value={name}
-        onChangeText={setName}
-        placeholder="Margarita..."
-        style={styles.input}
-      />
+      <TextInput value={name} onChangeText={setName} style={styles.input} />
 
-      <Text style={styles.label}>Price ($)</Text>
+      <Text style={styles.label}>Price</Text>
       <TextInput
         value={price}
         onChangeText={setPrice}
-        placeholder="9.99"
         keyboardType="decimal-pad"
         style={styles.input}
       />
 
-      <Pressable onPress={onSubmit} style={styles.primaryBtn}>
-        <Text style={styles.primaryBtnText}>{primaryLabel}</Text>
+      <Pressable onPress={submit} disabled={isBusy} style={styles.primaryButton}>
+        {isBusy ? (
+          <ActivityIndicator />
+        ) : (
+          <Text style={styles.primaryButtonText}>
+            {mode === 'create' ? 'Create' : 'Update'}
+          </Text>
+        )}
       </Pressable>
 
-      {props.mode === 'edit' && (
-        <Pressable onPress={confirmDelete} style={styles.deleteBtn}>
-          <Text style={styles.deleteBtnText}>Delete</Text>
+      {mode === 'edit' && onDelete && (
+        <Pressable onPress={onDelete} disabled={isBusy} style={styles.deleteButton}>
+          <Text style={styles.deleteButtonText}>Delete</Text>
         </Pressable>
       )}
     </View>
@@ -116,45 +171,49 @@ export default function ProductForm(props: Props) {
 }
 
 const styles = StyleSheet.create({
-  container: { padding: 16, gap: 10 },
+  container: { flex: 1, padding: 16, gap: 10, backgroundColor: 'white' },
+
   imageBox: {
+    width: '100%',
     height: 180,
-    borderRadius: 14,
-    backgroundColor: '#eee',
+    borderRadius: 12,
+    backgroundColor: '#e5e7eb',
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',
   },
   image: { width: '100%', height: '100%' },
-  noImageText: { color: '#777' },
+  noImageText: { color: '#6b7280' },
 
-  selectImage: { color: '#1677ff', textAlign: 'center', fontWeight: '600', marginTop: 6 },
+  linkButton: { alignSelf: 'center', paddingVertical: 10 },
+  linkButtonText: { color: '#2563eb', fontWeight: '600' },
 
-  label: { marginTop: 10, marginBottom: 4, fontWeight: '600', color: '#333' },
+  label: { fontSize: 14, color: '#111827', marginTop: 4 },
   input: {
     borderWidth: 1,
-    borderColor: '#ddd',
+    borderColor: '#d1d5db',
     borderRadius: 10,
-    padding: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
     backgroundColor: '#fff',
   },
 
-  primaryBtn: {
-    marginTop: 14,
-    backgroundColor: '#1677ff',
-    padding: 16,
-    borderRadius: 999,
+  primaryButton: {
+    marginTop: 10,
+    backgroundColor: '#2563eb',
+    paddingVertical: 14,
+    borderRadius: 12,
     alignItems: 'center',
   },
-  primaryBtnText: { color: 'white', fontWeight: '800', fontSize: 16 },
+  primaryButtonText: { color: 'white', fontWeight: '700' },
 
-  deleteBtn: {
+  deleteButton: {
+    marginTop: 8,
     borderWidth: 2,
-    borderColor: '#ff3b30',
-    padding: 14,
-    borderRadius: 999,
+    borderColor: '#ef4444',
+    paddingVertical: 14,
+    borderRadius: 12,
     alignItems: 'center',
-    marginTop: 6,
   },
-  deleteBtnText: { color: '#ff3b30', fontWeight: '800', fontSize: 16 },
+  deleteButtonText: { color: '#ef4444', fontWeight: '700' },
 });

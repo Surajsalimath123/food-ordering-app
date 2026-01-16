@@ -1,175 +1,132 @@
-import { Ionicons } from '@expo/vector-icons';
-import {
-  Link,
-  Stack,
-  router,
-  useLocalSearchParams,
-  useSegments,
-} from 'expo-router';
-import React, { useMemo, useState } from 'react';
-import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { router, useLocalSearchParams } from 'expo-router';
+import React, { useEffect, useMemo, useState } from 'react';
+import { ActivityIndicator, Image, Pressable, StyleSheet, Text, View } from 'react-native';
 
-import products from '@/assets/data/products';
 import Colors from '@/constants/Colors';
+import { supabase } from '@/lib/supabase';
 import { useCart } from '@/providers/CartProvider';
-import type { PizzaSize } from '@/types';
+import type { PizzaSize, Product } from '@/types';
 
 const sizes: PizzaSize[] = ['S', 'M', 'L', 'XL'];
 
 export default function ProductDetailsScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { addItem, totalItems } = useCart();
-  const insets = useSafeAreaInsets();
+  const { addItem } = useCart();
 
-  // Detect which group we are in: "(user)" or "(admin)"
-  const segments = useSegments();
-  const group = (segments?.[0] ?? '(user)') as string;
-
-  const product = useMemo(
-    () => products.find((p) => p.id === Number(id)),
-    [id]
-  );
+  const [product, setProduct] = useState<Product | null>(null);
+  const [loading, setLoading] = useState(true);
 
   const [selectedSize, setSelectedSize] = useState<PizzaSize>('M');
 
-  if (!product) {
+  const productId = useMemo(() => Number(id), [id]);
+
+  useEffect(() => {
+    const load = async () => {
+      setLoading(true);
+
+      const { data, error } = await supabase
+        .from('products')
+        .select('*')
+        .eq('id', productId)
+        .single();
+
+      if (error) setProduct(null);
+      else setProduct(data as Product);
+
+      setLoading(false);
+    };
+
+    if (!Number.isNaN(productId)) load();
+    else setLoading(false);
+  }, [productId]);
+
+  if (loading) {
     return (
       <View style={styles.center}>
-        <Text>Product not found</Text>
+        <ActivityIndicator />
       </View>
     );
   }
 
-  const cartPath = `/${group}/cart`;
+  if (!product) {
+    return (
+      <View style={styles.center}>
+        <Text style={{ fontWeight: '800' }}>Product not found</Text>
+        <Text style={{ marginTop: 10, color: '#1976d2' }} onPress={() => router.back()}>
+          Go back
+        </Text>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
-      <Stack.Screen
-        options={{
-          title: product.name,
-          headerRight: () => (
-            <Link href={cartPath as any} asChild>
-              <Pressable style={{ paddingRight: 10 }}>
-                <View>
-                  <Ionicons
-                    name="cart-outline"
-                    size={24}
-                    color={Colors.light.tint}
-                  />
-                  {totalItems > 0 && (
-                    <View style={styles.badge}>
-                      <Text style={styles.badgeText}>{totalItems}</Text>
-                    </View>
-                  )}
-                </View>
-              </Pressable>
-            </Link>
-          ),
-        }}
-      />
-
       <Image
         source={{
           uri:
-            product.image ??
+            product.image ||
             'https://notjustdev-dummy.s3.us-east-2.amazonaws.com/food/default.png',
         }}
         style={styles.image}
         resizeMode="contain"
       />
 
-      <Text style={styles.title}>{product.name}</Text>
+      <Text style={styles.name}>{product.name}</Text>
+      <Text style={styles.price}>${Number(product.price).toFixed(2)}</Text>
 
-      <Text style={styles.subtitle}>Select size</Text>
       <View style={styles.sizes}>
-        {sizes.map((size) => {
-          const isSelected = size === selectedSize;
-          return (
-            <Pressable
-              key={size}
-              onPress={() => setSelectedSize(size)}
-              style={[styles.size, isSelected && styles.sizeSelected]}
-            >
-              <Text style={[styles.sizeText, isSelected && styles.sizeTextSelected]}>
-                {size}
-              </Text>
-            </Pressable>
-          );
-        })}
+        {sizes.map((s) => (
+          <Pressable
+            key={s}
+            onPress={() => setSelectedSize(s)}
+            style={[
+              styles.sizePill,
+              selectedSize === s && { backgroundColor: Colors.light.tint },
+            ]}
+          >
+            <Text style={[styles.sizeText, selectedSize === s && { color: 'white' }]}>
+              {s}
+            </Text>
+          </Pressable>
+        ))}
       </View>
 
-      <Text style={styles.price}>Price: ${product.price.toFixed(2)}</Text>
-
       <Pressable
-        style={[styles.button, { marginBottom: insets.bottom + 10 }]}
+        style={styles.addBtn}
         onPress={() => {
           addItem(product, selectedSize);
-          router.push(cartPath as any);
+          router.push('/(user)/cart');
         }}
       >
-        <Text style={styles.buttonText}>Add to cart</Text>
+        <Text style={styles.addBtnText}>Add to cart</Text>
       </Pressable>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 16 },
+  container: { flex: 1, padding: 16, backgroundColor: 'white' },
+  image: { width: '100%', aspectRatio: 1, backgroundColor: '#f3f3f3', borderRadius: 16 },
+  name: { marginTop: 14, fontSize: 24, fontWeight: '900', color: '#111' },
+  price: { marginTop: 6, fontSize: 18, fontWeight: '900', color: Colors.light.tint },
 
-  container: { flex: 1, backgroundColor: 'white', padding: 10 },
-
-  image: { width: '100%', aspectRatio: 1, alignSelf: 'center' },
-
-  title: { fontWeight: '700', fontSize: 20, marginTop: 8 },
-
-  subtitle: { marginVertical: 10, fontWeight: '600' },
-
-  sizes: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    marginBottom: 10,
-  },
-
-  size: {
-    width: 50,
-    aspectRatio: 1,
-    borderRadius: 25,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'white',
-  },
-
-  sizeSelected: { backgroundColor: 'gainsboro' },
-
-  sizeText: { fontSize: 18, fontWeight: '600', color: 'gray' },
-
-  sizeTextSelected: { color: 'black' },
-
-  price: { fontSize: 18, fontWeight: '800', marginTop: 'auto' },
-
-  button: {
-    backgroundColor: Colors.light.tint,
-    padding: 15,
-    alignItems: 'center',
+  sizes: { flexDirection: 'row', gap: 10, marginTop: 18, flexWrap: 'wrap' },
+  sizePill: {
+    borderWidth: 1,
+    borderColor: Colors.light.tint,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
     borderRadius: 999,
-    marginTop: 10,
   },
+  sizeText: { fontWeight: '800', color: Colors.light.tint },
 
-  buttonText: { fontSize: 16, fontWeight: '700', color: 'white' },
-
-  badge: {
-    position: 'absolute',
-    right: -8,
-    top: -6,
-    minWidth: 18,
-    height: 18,
-    borderRadius: 9,
-    backgroundColor: 'red',
+  addBtn: {
+    marginTop: 'auto',
+    backgroundColor: Colors.light.tint,
+    paddingVertical: 14,
+    borderRadius: 14,
     alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 4,
   },
-
-  badgeText: { color: 'white', fontSize: 11, fontWeight: '800' },
+  addBtnText: { color: 'white', fontWeight: '900', fontSize: 16 },
 });

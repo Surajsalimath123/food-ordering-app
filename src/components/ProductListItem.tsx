@@ -1,11 +1,11 @@
+import Colors from '@/constants/Colors';
 import type { Product } from '@/types';
 import React from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
-import RemoteImage from './RemoteImage';
+import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 
 type Props = {
   product: Product;
-  onPress?: () => void; // ✅ optional (fixes TS error too)
+  onPress?: () => void;
 };
 
 export default function ProductListItem({ product, onPress }: Props) {
@@ -13,38 +13,53 @@ export default function ProductListItem({ product, onPress }: Props) {
     <Pressable
       onPress={onPress}
       disabled={!onPress}
-      style={({ pressed }) => [styles.card, pressed && onPress && styles.pressed]}
+      style={({ pressed }) => [
+        styles.container,
+        pressed && onPress ? { opacity: 0.85 } : null,
+      ]}
     >
-      <RemoteImage path={product.image} style={styles.image} />
+      <Image
+        source={{
+          uri:
+            product.image ||
+            'https://notjustdev-dummy.s3.us-east-2.amazonaws.com/food/default.png',
+        }}
+        style={styles.image}
+        resizeMode="contain"
+      />
 
       <View style={styles.info}>
         <Text style={styles.title} numberOfLines={1}>
           {product.name}
         </Text>
-        <Text style={styles.price}>${product.price.toFixed(2)}</Text>
+        <Text style={styles.price}>${Number(product.price).toFixed(2)}</Text>
       </View>
     </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
-  card: {
-    flex: 1, // ✅ KEY: allows 2 columns
+  container: {
+    flex: 1,
     backgroundColor: 'white',
-    borderRadius: 16,
+    borderRadius: 14,
     padding: 12,
-  },
-  pressed: {
-    opacity: 0.75,
+    margin: 8,
+    shadowColor: '#000',
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
   },
   image: {
     width: '100%',
-    aspectRatio: 1, // ✅ square so it won’t become huge
+    aspectRatio: 1,
     borderRadius: 12,
-    backgroundColor: '#f2f2f2',
+    backgroundColor: '#f3f3f3',
   },
   info: {
     marginTop: 10,
+    gap: 4,
   },
   title: {
     fontSize: 16,
@@ -52,9 +67,8 @@ const styles = StyleSheet.create({
     color: '#111',
   },
   price: {
-    marginTop: 4,
     fontSize: 14,
     fontWeight: '800',
-    color: '#1976d2',
+    color: Colors.light.tint,
   },
 });
