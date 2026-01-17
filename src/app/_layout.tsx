@@ -6,12 +6,15 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 import { AuthProvider } from '@/providers/AuthProvider';
 import { CartProvider } from '@/providers/CartProvider';
+import LoyaltyProvider from '@/providers/LoyaltyProvider';
+import NotificationProvider from '@/providers/NotificationProvider';
 import { ProductsProvider } from '@/providers/ProductsProvider';
 
 export default function RootLayout() {
   const [queryClient] = useState(() => new QueryClient());
 
   const publishableKey = process.env.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY;
+
   if (!publishableKey) {
     throw new Error('Missing EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY in .env');
   }
@@ -22,12 +25,16 @@ export default function RootLayout() {
         <AuthProvider>
           <ProductsProvider>
             <CartProvider>
-              <Stack screenOptions={{ headerShown: false }}>
-                <Stack.Screen name="index" />
-                <Stack.Screen name="(auth)" />
-                <Stack.Screen name="(user)" />
-                <Stack.Screen name="(admin)" />
-              </Stack>
+              <LoyaltyProvider>
+                <NotificationProvider>
+                  <Stack screenOptions={{ headerShown: false }}>
+                    <Stack.Screen name="index" />
+                    <Stack.Screen name="(auth)" />
+                    <Stack.Screen name="(user)" />
+                    <Stack.Screen name="(admin)" />
+                  </Stack>
+                </NotificationProvider>
+              </LoyaltyProvider>
             </CartProvider>
           </ProductsProvider>
         </AuthProvider>

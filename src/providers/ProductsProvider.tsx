@@ -1,65 +1,104 @@
-import initialProducts from '@/assets/data/products';
-import React, { createContext, useContext, useMemo, useState } from 'react';
+import React, {
+  PropsWithChildren,
+  createContext,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+} from 'react';
 
-export type Product = {
-  id: number;
-  name: string;
-  price: number;
-  image?: string | null;
-};
-
-type CreateInput = Omit<Product, 'id'>;
+import { supabase } from '@/lib/supabase';
+import type { Product } from '@/types';
 
 type ProductsContextType = {
   products: Product[];
-  getById: (id: number) => Product | undefined;
-  createProduct: (input: CreateInput) => Product;
-  updateProduct: (id: number, input: CreateInput) => void;
-  deleteProduct: (id: number) => void;
+  bestSellerIds: string[]; // product ids as strings
+  loading: boolean;
+  errorMsg: string | null;
+  reload: () => Promise<void>;
 };
 
-const ProductsContext = createContext<ProductsContextType | null>(null);
+const ProductsContext = createContext<ProductsContextType>({
+  products: [],
+  bestSellerIds: [],
+  loading: false,
+  errorMsg: null,
+  reload: async () => {},
+});
 
-export function ProductsProvider({ children }: { children: React.ReactNode }) {
-  const [products, setProducts] = useState<Product[]>(
-    // normalize possible differences in your seed file
-    (initialProducts as any[]).map((p) => ({
-      id: Number(p.id),
-      name: p.name,
-      price: Number(p.price),
-      image: p.image ?? null,
-    }))
-  );
+export function useProducts() {
+  return useContext(ProductsContext);
+}
 
-  const getById = (id: number) => products.find((p) => p.id === id);
+export function ProductsProvider({ children }: PropsWithChildren) {
+  const [products, setProducts] = useState<Product[]>([]);
+  const [bestSellerIds, setBestSellerIds] = useState<string[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  const createProduct = (input: CreateInput) => {
-    const newId = products.length ? Math.max(...products.map((p) => p.id)) + 1 : 1;
-    const newProduct: Product = { id: newId, ...input };
-    setProducts((prev) => [newProduct, ...prev]);
-    return newProduct;
+  const loadProducts = async () => {
+    const { data, error } = await supabase
+      .from('products')
+      .select('*')
+      .order('id', { ascending: true });
+
+    if (error) throw error;
+    setProducts((data ?? []) as Product[]);
   };
 
-  const updateProduct = (id: number, input: CreateInput) => {
-    setProducts((prev) =>
-      prev.map((p) => (p.id === id ? { ...p, ...input, id } : p))
-    );
+  const loadBestSellers = async () => {
+    // Top 2 from your view: product_sales(product_id, total_sold)
+    const { data, error } = await supabase
+      .from('product_sales')
+      .select('product_id,total_sold')
+      .order('total_sold', { ascending: false })
+      .limit(2);
+
+    if (error) throw error;
+
+    const ids = (data ?? []).map((r: any) => String(r.product_id));
+    setBestSellerIds(ids);
   };
 
-  const deleteProduct = (id: number) => {
-    setProducts((prev) => prev.filter((p) => p.id !== id));
+  const reload = async () => {
+    try {
+      setErrorMsg(null);
+      setLoading(true);
+      await Promise.all([loadProducts(), loadBestSellers()]);
+    } catch (e: any) {
+      setErrorMsg(e?.message ?? 'Failed to load products');
+      setProducts([]);
+      setBestSellerIds([]);
+    } finally {
+      setLoading(false);
+    }
   };
+
+  useEffect(() => {
+    reload();
+
+    // Optional: auto-refresh best sellers if orders/items change
+    const channel = supabase
+      .channel('best-sellers-changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, () =>
+        loadBestSellers().catch(() => {})
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'order_items' },
+        () => loadBestSellers().catch(() => {})
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, []);
 
   const value = useMemo(
-    () => ({ products, getById, createProduct, updateProduct, deleteProduct }),
-    [products]
+    () => ({ products, bestSellerIds, loading, errorMsg, reload }),
+    [products, bestSellerIds, loading, errorMsg]
   );
 
   return <ProductsContext.Provider value={value}>{children}</ProductsContext.Provider>;
-}
-
-export function useProducts() {
-  const ctx = useContext(ProductsContext);
-  if (!ctx) throw new Error('useProducts must be used inside ProductsProvider');
-  return ctx;
 }

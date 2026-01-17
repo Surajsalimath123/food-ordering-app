@@ -2,3 +2,6 @@ project_id = "lsxqzpaanzyuqngzqgke"
 
 [functions.create-payment-intent]
 verify_jwt = false
+
+[functions.payment-sheet]
+verify_jwt = false
