@@ -1,98 +1,113 @@
-# food-ordering-app (Expo + React Native + Supabase)
+# food-ordering-app  
+**Expo + React Native + Supabase + Stripe (Test Mode)**
 
-Take-home project submission built with **Expo Router** + **Supabase (Auth + Postgres)** + **Stripe test payments**.
-
----
-
-## Tech Stack
-- Expo + React Native + TypeScript
-- Expo Router navigation
-- Supabase (Auth + Postgres tables)
-- Stripe (test payment flow)
+This repository contains my take-home submission for the Food Ordering App, built using Expo Router with a Supabase backend and Stripe test payments.
 
 ---
 
-## Additional Features Implemented (Beyond Tutorial)
+## 🔀 Important: Branch to Review
+Please check out the submission branch:
 
-### 1) Best Seller Badge (UI enhancement)
-- Highlighted products with a **“Best Seller”** badge for better discoverability in the menu.
-
-### 2) Loyalty Reward (Progress + 50% Discount on 6th order)
-- Displays a **progress bar (1 → 5 paid orders)** in the cart.
-- After **5 paid orders**, the user’s **6th order automatically gets 50% off**.
-- UI reflects reward availability and shows discounted estimated total.
-
-### 3) Customer Support Tickets (User → Admin workflow)
-- User can submit a support ticket with **subject + message**.
-- Ticket is stored in Supabase and linked to the authenticated user.
-- Admin dashboard shows **ticket id, user id, timestamp, status** and allows **mark as closed**.
-
----
-
-## Running the App Locally
-
-### 1) Install dependencies
 ```bash
+git checkout submission/nevryk-takehome
+All features and documentation are finalized on this branch.
+
+🧱 Tech Stack
+Expo + React Native
+
+TypeScript
+
+Expo Router
+
+Supabase (Auth + PostgreSQL)
+
+Stripe (test payment flow)
+
+✨ Additional Features Implemented
+1️⃣ Best Seller Badge (UI Enhancement)
+Products marked as popular are highlighted with a “Best Seller” badge to improve discoverability and UX in the menu screen.
+
+2️⃣ Loyalty Reward System (Progress + Discount)
+Displays order progress (1 → 5) for the logged-in user.
+
+After completing 5 paid orders, the 6th order automatically receives 50% off.
+
+UI updates dynamically to show progress and when the reward is active.
+
+3️⃣ Customer Support Tickets (User → Admin Workflow)
+Users can submit support tickets with subject + message.
+
+Tickets are stored in Supabase and linked to the user account.
+
+Admin dashboard allows:
+
+Viewing all tickets
+
+Seeing ticket ID, user ID, timestamp, status
+
+Marking tickets as Closed
+
+▶️ Running the App Locally
+1️⃣ Install Dependencies
+bash
+Copy code
 npm install
-2) Create environment variables
-Copy the env template and fill in values:
+2️⃣ Environment Variables Setup
+Create a .env file from the template:
 
 bash
 Copy code
 cp .env.example .env
-Your .env should look like this (example keys):
+Fill in .env with the provided test credentials (shared separately by email):
 
 env
 Copy code
-EXPO_PUBLIC_SUPABASE_URL="https://YOUR_PROJECT.supabase.co"
-EXPO_PUBLIC_SUPABASE_ANON_KEY="YOUR_SUPABASE_ANON_KEY"
-EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY="YOUR_STRIPE_PUBLISHABLE_KEY"
-✅ Note: .env is intentionally not committed. Only .env.example is included.
+EXPO_PUBLIC_SUPABASE_URL=your_supabase_url
+EXPO_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
+EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY=your_stripe_publishable_key
+⚠️ .env is intentionally not committed to GitHub.
+Use .env.example as the reference.
 
-3) Start the app
+3️⃣ Start the App
 bash
 Copy code
 npx expo start -c
-Run using:
+Important:
+Expo does NOT reload environment variables automatically.
+Always restart with -c after changing .env.
 
-iOS Simulator (recommended)
-or
+💳 Stripe Test Payment
+Use the following Stripe test card during checkout:
 
-Expo Go (if supported for your environment)
+Card Number: 4242 4242 4242 4242
 
-Test Accounts / Roles
-This project supports User and Admin roles (stored in Supabase profile/role).
+Expiry Date: Any future date (e.g. 12/34)
 
-User: place orders, view loyalty progress, submit support tickets.
+CVC: 123
 
-Admin: access admin area and view support tickets dashboard.
+ZIP: 12345
 
-(Use the accounts created in your Supabase Auth to test both roles.)
+📚 What I Learned From This Project
+Structuring a production-style Expo Router app with role-based navigation.
 
-How to Review the Added Features
-Feature 1: Best Seller badge
-Open Menu → visually confirm “Best Seller” badge appears on tagged items.
+Managing environment variables safely for mobile apps.
 
-Feature 2: Loyalty Progress + 50% reward
-Place paid orders as a user.
+Implementing real-world features like loyalty rewards and support ticket workflows.
 
-Observe cart progress increments up to 5/5.
+Integrating Stripe test payments with proper UX handling.
 
-On the 6th order, discount should apply automatically.
+Designing a clean admin vs user experience using Supabase Auth and data rules.
 
-Feature 3: Support Tickets
-As a user: go to Profile → Customer Support, submit a ticket.
+📌 Notes for Reviewers
+This project runs entirely in test mode.
 
-As admin: open Support Tickets dashboard, verify ticket list + mark closed.
+No secrets are committed to the repository.
 
-What I Learned
-Building a full Expo Router application with authenticated flows and role-based routing.
+All custom features are documented above.
 
-Implementing real-world workflows using Supabase (user tickets + admin dashboard).
+Code is structured for clarity and reviewability.
 
-Handling conditional pricing logic (loyalty discount) and reflecting it cleanly in UI.
+Thank you for reviewing my submission!
 
-Improving UX with small UI enhancements (badges, simple profile greeting + navigation).
-
-bash
+yaml
 Copy code
