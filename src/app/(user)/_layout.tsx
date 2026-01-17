@@ -39,14 +39,14 @@ export default function UserLayout() {
       />
 
       <Tabs.Screen
-  name="orders"
-  options={{
-    title: 'Orders',
-    // optional but makes it explicit:
-    href: '/(user)/orders',
-  }}
-/>
-
+        name="orders"
+        options={{
+          title: 'Orders',
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="receipt-outline" size={size} color={color} />
+          ),
+        }}
+      />
 
       <Tabs.Screen
         name="profile"
@@ -67,6 +67,9 @@ export default function UserLayout() {
           ),
         }}
       />
+
+      {/* ✅ Support is reachable from Profile, but not shown as a tab */}
+      <Tabs.Screen name="support" options={{ href: null }} />
     </Tabs>
   );
 }
