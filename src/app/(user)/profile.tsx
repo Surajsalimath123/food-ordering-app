@@ -1,6 +1,6 @@
 import { supabase } from '@/lib/supabase';
 import { router } from 'expo-router';
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 
 export default function ProfileScreen() {
@@ -8,8 +8,8 @@ export default function ProfileScreen() {
 
   useEffect(() => {
     (async () => {
-      const { data, error } = await supabase.auth.getUser();
-      if (!error) setEmail(data?.user?.email ?? '');
+      const { data } = await supabase.auth.getUser();
+      setEmail(data?.user?.email ?? '');
     })();
   }, []);
 
@@ -20,83 +20,44 @@ export default function ProfileScreen() {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Profile</Text>
+      <Text style={styles.title}>Hello{email ? ',' : ''}</Text>
+      {email ? <Text style={styles.email}>{email}</Text> : null}
 
-      {/* Customer Support */}
-      <Pressable
-        style={({ pressed }) => [styles.item, pressed && styles.itemPressed]}
-        onPress={() => router.push('/(user)/support')}
-      >
-        <Text style={styles.itemText}>Customer Support</Text>
+      <Pressable style={styles.rowButton} onPress={() => router.push('/(user)/support')}>
+        <Text style={styles.rowText}>Customer Support</Text>
         <Text style={styles.chevron}>›</Text>
       </Pressable>
 
-      {/* Hello + email */}
-      <View style={styles.userCard}>
-        <Text style={styles.hello}>Hello,</Text>
-        <Text style={styles.email}>{email || 'Signed in'}</Text>
-      </View>
-
-      {/* Sign out */}
-      <Pressable
-        style={({ pressed }) => [styles.logoutButton, pressed && styles.logoutPressed]}
-        onPress={onLogout}
-      >
-        <Text style={styles.logoutText}>Sign out</Text>
+      <Pressable style={styles.logoutButton} onPress={onLogout}>
+        <Text style={styles.logoutText}>Logout</Text>
       </Pressable>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    paddingHorizontal: 20,
-    paddingTop: 40,
-    backgroundColor: '#f2f2f2',
-  },
-  title: {
-    fontSize: 26,
-    fontWeight: '900',
-    marginBottom: 18,
-    color: '#111',
-  },
+  container: { flex: 1, padding: 20, paddingTop: 60, backgroundColor: '#fff' },
+  title: { fontSize: 26, fontWeight: '800', marginBottom: 6 },
+  email: { fontSize: 14, color: '#666', marginBottom: 20, fontWeight: '600' },
 
-  item: {
-    backgroundColor: 'white',
-    borderRadius: 12,
-    paddingHorizontal: 16,
+  rowButton: {
+    backgroundColor: '#f6f6f6',
     paddingVertical: 14,
-    marginBottom: 14,
+    paddingHorizontal: 14,
+    borderRadius: 12,
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#eee',
+    justifyContent: 'space-between',
+    marginBottom: 18,
   },
-  itemPressed: { opacity: 0.75 },
-  itemText: { fontSize: 16, fontWeight: '700', color: '#111' },
-  chevron: { fontSize: 20, color: '#999', fontWeight: '700' },
-
-  userCard: {
-    backgroundColor: 'white',
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    borderWidth: 1,
-    borderColor: '#eee',
-  },
-  hello: { fontSize: 14, fontWeight: '800', color: '#111' },
-  email: { marginTop: 4, fontSize: 14, fontWeight: '700', color: '#666' },
+  rowText: { fontSize: 16, fontWeight: '700' },
+  chevron: { fontSize: 22, fontWeight: '900', color: '#999' },
 
   logoutButton: {
-    marginTop: 18,
     backgroundColor: '#000',
-    paddingHorizontal: 20,
     paddingVertical: 14,
     borderRadius: 12,
     alignItems: 'center',
   },
-  logoutPressed: { opacity: 0.75 },
   logoutText: { color: '#fff', fontWeight: '800', fontSize: 15 },
 });
