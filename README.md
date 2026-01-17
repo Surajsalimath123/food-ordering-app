@@ -1,50 +1,29 @@
-# Welcome to your Expo app 👋
+# food-ordering-app (Expo + React Native + Supabase)
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+Take-home project submission built with Expo Router + Supabase backend + Stripe test payments.
 
-## Get started
+## Tech Stack
+- Expo + React Native + TypeScript
+- Expo Router navigation
+- Supabase (Auth + Postgres tables)
+- Stripe (test payment flow)
 
-1. Install dependencies
+## Additional Features Implemented
+### 1) Best Seller badge (UI enhancement)
+Highlighted products with a **“Best Seller”** badge for better discoverability in the menu.
 
-   ```bash
-   npm install
-   ```
+### 2) Loyalty Reward (Progress + Discount)
+- Shows **progress 1 → 5 orders** in the cart.
+- After completing **5 paid orders**, the **6th order gets 50% off** automatically.
+- UI updates to show when the reward is ready and displays the discounted estimated total.
 
-2. Start the app
+### 3) Customer Support Tickets (User → Admin workflow)
+- User can submit a support ticket with **subject + message**.
+- Ticket is saved to Supabase linked to the user account.
+- Admin can view tickets with **ticket id, user id, timestamp, status** and **mark as closed**.
 
-   ```bash
-   npx expo start
-   ```
+## Running the app locally
 
-In the output, you'll find options to open the app in a
-
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
-
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
-
-## Get a fresh project
-
-When you're ready, run:
-
+### 1) Install dependencies
 ```bash
-npm run reset-project
-```
-
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
-
-## Learn more
-
-To learn more about developing your project with Expo, look at the following resources:
-
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
-
-## Join the community
-
-Join our community of developers creating universal apps.
-
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+npm install
