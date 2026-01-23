@@ -1,31 +1,20 @@
-// src/server.ts
+cat > src/server.ts <<'EOF'
 import cors from "cors";
 import "dotenv/config";
 import express from "express";
-import { mastra } from "./mastra";
 import { supabaseAdmin } from "./supabase";
 
+// ✅ Import agent directly (avoid mastra.getAgent undefined)
+import { orderAssistantAgent } from "./mastra/agents/orderAssistantAgent";
+
 console.log("OPENAI_API_KEY loaded:", !!process.env.OPENAI_API_KEY);
-console.log("✅ LOADED SERVER.TS WITH /openai-test + /supabase-test + /cart-test + /debug-tools");
+console.log("✅ LOADED SERVER.TS WITH /openai-test + /supabase-test + /cart-test");
 
 const app = express();
 app.use(cors());
 app.use(express.json());
 
 app.get("/health", (_req, res) => res.json({ ok: true }));
-
-app.get("/openai-test", async (_req, res) => {
-  try {
-    const key = process.env.OPENAI_API_KEY ?? "";
-    const resp = await fetch("https://api.openai.com/v1/models", {
-      headers: { Authorization: `Bearer ${key}` },
-    });
-    const text = await resp.text();
-    res.status(resp.status).send(text);
-  } catch (e: any) {
-    res.status(500).json({ error: e?.message ?? "unknown error" });
-  }
-});
 
 app.get("/supabase-test", async (_req, res) => {
   try {
@@ -56,7 +45,6 @@ app.get("/cart-test", async (req, res) => {
     }
 
     const cartId = existingCart?.id ?? null;
-
     if (!cartId) return res.json({ ok: true, userId, cartId: null, items: [] });
 
     const { data: items, error: itemsErr } = await supabaseAdmin
@@ -75,27 +63,6 @@ app.get("/cart-test", async (req, res) => {
   }
 });
 
-app.get("/debug-tools", async (_req, res) => {
-  try {
-    const agents = mastra.listAgents?.() ?? {};
-    const agentIds = Object.keys(agents);
-
-    const detail = agentIds.map((id) => {
-      const a: any = agents[id];
-      const tools =
-        a?.tools ? Object.keys(a.tools) :
-        a?.toolbox ? Object.keys(a.toolbox) :
-        a?.config?.tools ? Object.keys(a.config.tools) :
-        [];
-      return { id, name: a?.name, toolCount: tools.length, tools };
-    });
-
-    res.json({ ok: true, agentIds, detail });
-  } catch (e: any) {
-    res.status(500).json({ ok: false, error: e?.message ?? "unknown error" });
-  }
-});
-
 app.post("/chat", async (req, res) => {
   try {
     const { messages, userId } = req.body as {
@@ -108,16 +75,14 @@ app.post("/chat", async (req, res) => {
     }
 
     const uid = userId ?? process.env.GUEST_USER_ID ?? "guest_user_1";
-    const agent = mastra.getAgent("orderAssistantAgent");
 
-    const result: any = await agent.generate(messages, {
+    const result: any = await orderAssistantAgent.generate(messages, {
       system: `Current userId: ${uid}. Always use this userId for cart tools.`,
       maxSteps: 6,
     });
 
-    // return debug if present
     res.json({
-      text: result.text,
+      text: result.text ?? "",
       debug: {
         toolCalls: result?.steps?.flatMap?.((s: any) => s?.toolCalls ?? []) ?? result?.toolCalls ?? null,
         steps: result?.steps ?? null,
@@ -132,3 +97,4 @@ app.post("/chat", async (req, res) => {
 
 const port = Number(process.env.PORT ?? 8787);
 app.listen(port, () => console.log(`✅ backend running: http://localhost:${port}`));
+EOF
