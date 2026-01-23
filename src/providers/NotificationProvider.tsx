@@ -1,9 +1,12 @@
+// src/providers/NotificationProvider.tsx
+
 import * as Notifications from 'expo-notifications';
 import { PropsWithChildren, useEffect, useRef, useState } from 'react';
 
 import { registerForPushNotificationsAsync } from '@/lib/notifications';
 import { supabase } from '@/lib/supabase';
 
+// Safe global handler
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
     shouldShowAlert: true,
@@ -13,19 +16,16 @@ Notifications.setNotificationHandler({
 });
 
 const NotificationProvider = ({ children }: PropsWithChildren) => {
-  const [expoPushToken, setExpoPushToken] = useState<string | undefined>();
-  const notificationListener = useRef<Notifications.Subscription>();
-  const responseListener = useRef<Notifications.Subscription>();
+  const [expoPushToken, setExpoPushToken] = useState<string | null>(null);
+
+  const notificationListener = useRef<any>(null);
+  const responseListener = useRef<any>(null);
 
   const savePushTokenForUser = async (token: string) => {
-    // ✅ Don’t call auth.getUser when not logged-in
-    const { data: sessionData } = await supabase.auth.getSession();
-    const user = sessionData.session?.user;
+    const { data } = await supabase.auth.getSession();
+    const user = data.session?.user;
 
-    if (!user) {
-      // not signed in yet -> skip
-      return;
-    }
+    if (!user) return;
 
     const { error } = await supabase
       .from('profiles')
@@ -39,8 +39,10 @@ const NotificationProvider = ({ children }: PropsWithChildren) => {
     }
   };
 
+  // 🔔 Listeners (SAFE in Expo Go)
   useEffect(() => {
-    // 1) Listeners always okay
+    if (!Notifications?.addNotificationReceivedListener) return;
+
     notificationListener.current =
       Notifications.addNotificationReceivedListener((notification) => {
         console.log('🔔 Notification received:', notification.request.content);
@@ -52,18 +54,34 @@ const NotificationProvider = ({ children }: PropsWithChildren) => {
       });
 
     return () => {
-      if (notificationListener.current) {
-        Notifications.removeNotificationSubscription(notificationListener.current);
-      }
-      if (responseListener.current) {
-        Notifications.removeNotificationSubscription(responseListener.current);
+      // 🚨 Guard for Expo Go
+      try {
+        if (
+          notificationListener.current &&
+          typeof Notifications.removeNotificationSubscription === 'function'
+        ) {
+          Notifications.removeNotificationSubscription(
+            notificationListener.current
+          );
+        }
+
+        if (
+          responseListener.current &&
+          typeof Notifications.removeNotificationSubscription === 'function'
+        ) {
+          Notifications.removeNotificationSubscription(
+            responseListener.current
+          );
+        }
+      } catch {
+        // Ignore Expo Go cleanup issues
       }
     };
   }, []);
 
+  // 📲 Token registration
   useEffect(() => {
-    // 2) Only attempt token registration, then save when a session exists
-    let unsub: { data?: { subscription: { unsubscribe: () => void } } } | null = null;
+    let authSub: any = null;
 
     const run = async () => {
       const token = await registerForPushNotificationsAsync();
@@ -76,15 +94,16 @@ const NotificationProvider = ({ children }: PropsWithChildren) => {
 
     run();
 
-    // If user logs in later, save token then
-    unsub = supabase.auth.onAuthStateChange(async (_event, session) => {
-      if (session?.user && expoPushToken) {
-        await savePushTokenForUser(expoPushToken);
+    authSub = supabase.auth.onAuthStateChange(
+      async (_event, session) => {
+        if (session?.user && expoPushToken) {
+          await savePushTokenForUser(expoPushToken);
+        }
       }
-    });
+    );
 
     return () => {
-      unsub?.data?.subscription?.unsubscribe?.();
+      authSub?.data?.subscription?.unsubscribe?.();
     };
   }, [expoPushToken]);
 

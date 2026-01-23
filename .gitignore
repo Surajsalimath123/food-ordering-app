@@ -43,3 +43,7 @@ app-example
 /ios
 /android
 .env
+
+# secrets
+.env
+backend/.env
