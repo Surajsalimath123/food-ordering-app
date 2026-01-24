@@ -7,17 +7,15 @@ import { updateCartItemTool } from "./tools/updateCartItemTool";
 
 /**
  * IMPORTANT:
- * Tool order matters
+ * Tool order matters because the OpenAI tool list maps them to _0, _1, _2...
  * _0 MUST be searchMenuTool
  */
 export const tools = [
-  searchMenuTool, // _0
-  addToCartTool,  // _1
+  searchMenuTool,  // _0
+  addToCartTool,   // _1 (your prompt might call it _2; we can align after)
   getCartTool,
   updateCartItemTool,
   removeCartItemTool,
 ] as const;
 
-export const toolsById = Object.fromEntries(
-  tools.map((t) => [t.id, t])
-);
+export const toolsById = Object.fromEntries(tools.map((t) => [t.id, t]));

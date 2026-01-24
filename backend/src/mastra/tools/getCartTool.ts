@@ -4,59 +4,45 @@ import { supabaseAdmin } from "../../supabase";
 
 export const getCartTool = createTool({
   id: "getCart",
-  description: "Fetch the current active cart for a user from Supabase.",
+  description: "Fetch the current ACTIVE cart with product details",
+
   inputSchema: z.object({
-    userId: z.string(),
+    userId: z.string().min(1),
   }),
-  outputSchema: z.object({
-    cartId: z.string().nullable(),
-    items: z.array(
-      z.object({
-        id: z.string(),
-        product_id: z.union([z.string(), z.number()]),
-        name: z.string(),
-        price: z.number(),
-        quantity: z.number(),
-        size: z.string().nullable().optional(),
-        image: z.string().nullable().optional(),
-      })
-    ),
-  }),
+
   execute: async ({ userId }) => {
-    // 1) get latest active cart
-    const cartRes = await supabaseAdmin
+    // 1️⃣ Active cart
+    const { data: cart } = await supabaseAdmin
       .from("carts")
-      .select("id, created_at")
+      .select("id")
       .eq("user_id", userId)
-      .eq("status", "active")
+      .eq("status", "ACTIVE")
       .order("created_at", { ascending: false })
       .limit(1)
       .maybeSingle();
 
-    if (cartRes.error) throw new Error(cartRes.error.message);
+    if (!cart) {
+      return { cartId: null, items: [] };
+    }
 
-    const cartId = cartRes.data?.id ?? null;
-    if (!cartId) return { cartId: null, items: [] };
-
-    // 2) load cart items + join products
-    const itemsRes = await supabaseAdmin
+    // 2️⃣ Cart items + product info
+    const { data: items } = await supabaseAdmin
       .from("cart_items")
-      .select("id,product_id,quantity,size,products(name,price,image)")
-      .eq("cart_id", cartId)
-      .order("created_at", { ascending: false });
+      .select(`
+        id,
+        quantity,
+        size,
+        products (
+          id,
+          name,
+          price
+        )
+      `)
+      .eq("cart_id", cart.id);
 
-    if (itemsRes.error) throw new Error(itemsRes.error.message);
-
-    const items = (itemsRes.data ?? []).map((row: any) => ({
-      id: row.id,
-      product_id: row.product_id,
-      quantity: Number(row.quantity ?? 0),
-      size: row.size ?? null,
-      name: row.products?.name ?? "Unknown",
-      price: Number(row.products?.price ?? 0),
-      image: row.products?.image ?? null,
-    }));
-
-    return { cartId, items };
+    return {
+      cartId: cart.id,
+      items: items ?? [],
+    };
   },
 });

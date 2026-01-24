@@ -1,4 +1,3 @@
-// src/tools/searchMenuTool.ts
 import { createTool } from "@mastra/core/tools";
 import { z } from "zod";
 import { supabaseAdmin } from "../../supabase";
@@ -6,7 +5,7 @@ import { supabaseAdmin } from "../../supabase";
 export const searchMenuTool = createTool({
   id: "searchMenu",
   description:
-    "Search menu products by a user query (name/description). Return matches and bestMatch.",
+    "Search menu products by a user query (name). Return matches and bestMatch.",
   inputSchema: z.object({
     query: z.string().min(1),
   }),
@@ -21,9 +20,10 @@ export const searchMenuTool = createTool({
     const q = String(qRaw).trim();
     if (!q) throw new Error("query is required");
 
+    // ✅ Only select columns that actually exist
     const { data, error } = await supabaseAdmin
       .from("products")
-      .select("id, name, price, image, description")
+      .select("id, name, price, image") // ❌ removed description
       .ilike("name", `%${q}%`)
       .order("id", { ascending: true })
       .limit(10);

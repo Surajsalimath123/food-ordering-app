@@ -1,4 +1,4 @@
-cat > src/server.ts <<'EOF'
+// src/server.ts
 import cors from "cors";
 import "dotenv/config";
 import express from "express";
@@ -8,13 +8,26 @@ import { supabaseAdmin } from "./supabase";
 import { orderAssistantAgent } from "./mastra/agents/orderAssistantAgent";
 
 console.log("OPENAI_API_KEY loaded:", !!process.env.OPENAI_API_KEY);
-console.log("✅ LOADED SERVER.TS WITH /openai-test + /supabase-test + /cart-test");
+console.log("✅ Backend booted");
 
 const app = express();
 app.use(cors());
 app.use(express.json());
 
 app.get("/health", (_req, res) => res.json({ ok: true }));
+
+app.get("/openai-test", async (_req, res) => {
+  try {
+    const key = process.env.OPENAI_API_KEY ?? "";
+    const resp = await fetch("https://api.openai.com/v1/models", {
+      headers: { Authorization: `Bearer ${key}` },
+    });
+    const text = await resp.text();
+    res.status(resp.status).send(text);
+  } catch (e: any) {
+    res.status(500).json({ error: e?.message ?? "unknown error" });
+  }
+});
 
 app.get("/supabase-test", async (_req, res) => {
   try {
@@ -45,6 +58,7 @@ app.get("/cart-test", async (req, res) => {
     }
 
     const cartId = existingCart?.id ?? null;
+
     if (!cartId) return res.json({ ok: true, userId, cartId: null, items: [] });
 
     const { data: items, error: itemsErr } = await supabaseAdmin
@@ -58,6 +72,15 @@ app.get("/cart-test", async (req, res) => {
     }
 
     res.json({ ok: true, userId, cartId, items: items ?? [] });
+  } catch (e: any) {
+    res.status(500).json({ ok: false, error: e?.message ?? "unknown error" });
+  }
+});
+
+app.get("/debug-tools", async (_req, res) => {
+  try {
+    // If you don’t have mastra instance listing, keep endpoint simple
+    res.json({ ok: true, note: "debug-tools not wired to mastra instance in this build" });
   } catch (e: any) {
     res.status(500).json({ ok: false, error: e?.message ?? "unknown error" });
   }
@@ -97,4 +120,3 @@ app.post("/chat", async (req, res) => {
 
 const port = Number(process.env.PORT ?? 8787);
 app.listen(port, () => console.log(`✅ backend running: http://localhost:${port}`));
-EOF
