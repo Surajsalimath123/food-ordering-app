@@ -1,167 +1,163 @@
-import React, { useMemo, useState } from 'react';
-import { Alert, FlatList, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+// src/app/(user)/cart.tsx
+import { useFocusEffect } from "expo-router";
+import React, { useCallback, useMemo, useState } from "react";
+import {
+  ActivityIndicator,
+  FlatList,
+  RefreshControl,
+  Text,
+  View,
+} from "react-native";
 
-import CartListItem from '@/components/CartListItem';
-import LoyaltyProgress from '@/components/LoyaltyProgress';
-import Colors from '@/constants/Colors';
-import { useCart } from '@/providers/CartProvider';
-import { useLoyalty } from '@/providers/LoyaltyProvider';
+import { fetchCartFromBackend, type CartItemDto } from "@/api/cart";
+
+// ✅ IMPORTANT: use the SAME userId you use in your curl /chat payload
+// If you have Supabase auth in the app, we can replace this with session.user.id later.
+const DEMO_USER_ID = "1cbf83ae-8d7e-4503-a1c7-f7f3a7d1ecaa";
 
 export default function CartScreen() {
-  const { items, total, updateQuantity, checkout } = useCart();
-  const { rewardAvailable, refresh } = useLoyalty();
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [items, setItems] = useState<CartItemDto[]>([]);
+  const [error, setError] = useState<string | null>(null);
 
-  const [placing, setPlacing] = useState(false);
+  const total = useMemo(() => {
+    return items.reduce((sum, i) => sum + i.products.price * i.quantity, 0);
+  }, [items]);
 
-  const canPlace = items.length > 0 && !placing;
+  const load = useCallback(async () => {
+    setError(null);
+    const cart = await fetchCartFromBackend(DEMO_USER_ID);
+    setItems(cart.items ?? []);
+  }, []);
 
-  const estimatedAfterDiscount = useMemo(() => {
-    if (!rewardAvailable) return total;
-    // UI estimate only. Backend will compute final amount.
-    return total * 0.5;
-  }, [rewardAvailable, total]);
+  useFocusEffect(
+    useCallback(() => {
+      let mounted = true;
 
-  const placeOrder = async () => {
-    if (!items.length) return;
+      (async () => {
+        try {
+          if (!mounted) return;
+          setLoading(true);
+          await load();
+        } catch (e: any) {
+          setError(e?.message ?? "Failed to load cart");
+        } finally {
+          if (mounted) setLoading(false);
+        }
+      })();
 
+      return () => {
+        mounted = false;
+      };
+    }, [load])
+  );
+
+  const onRefresh = useCallback(async () => {
     try {
-      setPlacing(true);
-
-      const ok = await checkout(); // ✅ checkout inserts order as Paid
-      if (ok) {
-        // ✅ instantly refresh loyalty so progress bar fills right away
-        await refresh();
-      }
+      setRefreshing(true);
+      await load();
     } catch (e: any) {
-      Alert.alert('Checkout failed', e?.message ?? 'Something went wrong');
+      setError(e?.message ?? "Failed to refresh cart");
     } finally {
-      setPlacing(false);
+      setRefreshing(false);
     }
-  };
+  }, [load]);
+
+  if (loading) {
+    return (
+      <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
+        <ActivityIndicator />
+        <Text style={{ marginTop: 8 }}>Loading cart...</Text>
+      </View>
+    );
+  }
 
   return (
-    <SafeAreaView style={styles.safe} edges={['top']}>
-      <View style={styles.container}>
-        <View style={styles.header}>
-          <Text style={styles.headerTitle}>Cart</Text>
-          <Text style={styles.headerSubtitle}>
-            {items.length} item{items.length === 1 ? '' : 's'}
+    <View style={{ flex: 1, padding: 16 }}>
+      <Text style={{ fontSize: 28, fontWeight: "700", marginBottom: 8 }}>
+        Cart
+      </Text>
+
+      <Text style={{ opacity: 0.7, marginBottom: 12 }}>
+        {items.length} items
+      </Text>
+
+      {error ? (
+        <View
+          style={{
+            padding: 12,
+            backgroundColor: "#fee2e2",
+            borderRadius: 10,
+            marginBottom: 12,
+          }}
+        >
+          <Text style={{ color: "#991b1b" }}>{error}</Text>
+        </View>
+      ) : null}
+
+      {items.length === 0 ? (
+        <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
+          <Text style={{ fontSize: 18, fontWeight: "600" }}>
+            Your cart is empty
+          </Text>
+          <Text style={{ opacity: 0.7, marginTop: 6, textAlign: "center" }}>
+            Add items from the Menu or AI Assistant and they will appear here.
           </Text>
         </View>
-
-        <FlatList
-          data={items}
-          keyExtractor={(item) => item.id}
-          renderItem={({ item }) => (
-            <CartListItem
-              cartItem={item}
-              onDecrease={() => updateQuantity(item.id, -1)}
-              onIncrease={() => updateQuantity(item.id, +1)}
-            />
-          )}
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={[
-            styles.listContent,
-            items.length === 0 && styles.listEmptyContent,
-          ]}
-          ListHeaderComponent={
-            <View style={styles.loyaltyWrap}>
-              <LoyaltyProgress />
-            </View>
-          }
-          ListEmptyComponent={
-            <View style={styles.empty}>
-              <Text style={styles.emptyTitle}>Your cart is empty</Text>
-              <Text style={styles.emptySub}>
-                Add items from the Menu and they will appear here.
-              </Text>
-            </View>
-          }
-        />
-
-        <SafeAreaView style={styles.bottomSafe} edges={['bottom']}>
-          <View style={styles.bottomBar}>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.totalLabel}>{rewardAvailable ? 'Estimated Total' : 'Total'}</Text>
-              <Text style={styles.totalHint}>
-                {rewardAvailable
-                  ? '50% loyalty discount will apply on checkout'
-                  : 'Taxes calculated at checkout'}
-              </Text>
-            </View>
-
-            <View style={styles.rightArea}>
-              <Text style={styles.totalValue}>${estimatedAfterDiscount.toFixed(2)}</Text>
-
-              <Pressable
-                onPress={placeOrder}
-                disabled={!canPlace}
-                style={({ pressed }) => [
-                  styles.placeButton,
-                  !canPlace && styles.placeButtonDisabled,
-                  pressed && canPlace && styles.placeButtonPressed,
-                ]}
+      ) : (
+        <>
+          <FlatList
+            data={items}
+            keyExtractor={(i) => i.id}
+            refreshControl={
+              <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+            }
+            renderItem={({ item }) => (
+              <View
+                style={{
+                  padding: 12,
+                  borderWidth: 1,
+                  borderColor: "#e5e7eb",
+                  borderRadius: 12,
+                  marginBottom: 10,
+                }}
               >
-                <Text style={styles.placeButtonText}>
-                  {placing ? 'Processing...' : 'Pay & Place order'}
+                <Text style={{ fontSize: 16, fontWeight: "700" }}>
+                  {item.products.name}
                 </Text>
-              </Pressable>
+
+                <Text style={{ opacity: 0.75, marginTop: 4 }}>
+                  Size: {item.size ?? "-"} • Qty: {item.quantity}
+                </Text>
+
+                <Text style={{ marginTop: 6, fontWeight: "700" }}>
+                  ${(item.products.price * item.quantity).toFixed(2)}
+                </Text>
+              </View>
+            )}
+          />
+
+          <View
+            style={{
+              paddingTop: 12,
+              borderTopWidth: 1,
+              borderTopColor: "#e5e7eb",
+              marginTop: 8,
+            }}
+          >
+            <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+              <Text style={{ fontSize: 16, fontWeight: "700" }}>Total</Text>
+              <Text style={{ fontSize: 16, fontWeight: "700" }}>
+                ${total.toFixed(2)}
+              </Text>
             </View>
+            <Text style={{ opacity: 0.6, marginTop: 4 }}>
+              Taxes calculated at checkout
+            </Text>
           </View>
-        </SafeAreaView>
-      </View>
-    </SafeAreaView>
+        </>
+      )}
+    </View>
   );
 }
-
-const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: '#f2f2f2' },
-  container: { flex: 1, backgroundColor: '#f2f2f2' },
-
-  header: { paddingHorizontal: 16, paddingTop: 6, paddingBottom: 10 },
-  headerTitle: { fontSize: 26, fontWeight: '800', color: '#111' },
-  headerSubtitle: { marginTop: 4, fontSize: 13, color: '#666', fontWeight: '600' },
-
-  loyaltyWrap: { paddingHorizontal: 12, paddingTop: 8, paddingBottom: 6 },
-
-  listContent: { paddingHorizontal: 12, paddingTop: 8, paddingBottom: 160 },
-  listEmptyContent: { flexGrow: 1, justifyContent: 'center', paddingBottom: 180 },
-
-  empty: { alignItems: 'center', paddingHorizontal: 24 },
-  emptyTitle: { fontSize: 18, fontWeight: '800', marginBottom: 6, color: '#111' },
-  emptySub: { fontSize: 14, color: '#666', textAlign: 'center', fontWeight: '500' },
-
-  bottomSafe: { backgroundColor: 'white' },
-  bottomBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    backgroundColor: 'white',
-    borderTopWidth: 1,
-    borderTopColor: '#e6e6e6',
-  },
-
-  totalLabel: { fontSize: 14, fontWeight: '700', color: '#333' },
-  totalHint: {
-    marginTop: 2,
-    fontSize: 12,
-    color: '#888',
-    fontWeight: Platform.OS === 'ios' ? '600' : '500',
-  },
-
-  rightArea: { alignItems: 'flex-end', gap: 8 },
-  totalValue: { fontSize: 22, fontWeight: '900', color: '#111' },
-
-  placeButton: {
-    backgroundColor: Colors.light.tint,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderRadius: 12,
-  },
-  placeButtonPressed: { opacity: 0.75 },
-  placeButtonDisabled: { backgroundColor: '#cfcfcf' },
-  placeButtonText: { color: 'white', fontWeight: '800' },
-});

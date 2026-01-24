@@ -1,70 +1,137 @@
+// backend/src/mastra/tools/addToCartTool.ts
+
 import { createTool } from "@mastra/core/tools";
 import { z } from "zod";
 import { supabaseAdmin } from "../../supabase";
-import { getOrCreateActiveCartId } from "./cartHelpers";
+
+const ACTIVE_STATUSES = ["active", "ACTIVE", "Active"];
 
 export const addToCartTool = createTool({
-  id: "addToCart",
+  id: "add_to_cart",
   description:
-    "Add a product to the user's ACTIVE cart. Reuse existing ACTIVE cart if present. If item exists, increment quantity.",
-  // ✅ Keep schema simple so Mastra won't force null-required fields
+    "Add a product to the user's ACTIVE cart by productId, with optional size and quantity.",
+
   inputSchema: z.object({
     userId: z.string().min(1),
-    productId: z.number(),
+    productId: z.number().int().positive(),
+    size: z.string().optional(),
+    quantity: z.number().int().positive().default(1),
   }),
 
-  execute: async (args: any) => {
-    const userId =
-      String(args?.userId ?? args?.input?.userId ?? args?.inputData?.userId ?? "").trim();
-    const productId = Number(
-      args?.productId ?? args?.input?.productId ?? args?.inputData?.productId
-    );
+  execute: async ({ userId, productId, size, quantity }) => {
+    const normalizedSize = (size ?? "").trim() || null;
 
-    if (!userId) throw new Error("userId is required");
-    if (!Number.isFinite(productId)) throw new Error("productId must be a number");
+    const cartId = await ensureActiveCartId(userId);
 
-    const cartId = await getOrCreateActiveCartId(userId);
+    // If item exists (same product+size), update quantity; else insert
+    const existing = await findCartItem(cartId, productId, normalizedSize);
 
-    // Defaults (your current tool calls don’t pass size/qty)
-    const size = "M";
-    const addQty = 1;
+    if (existing) {
+      const newQty = (existing.quantity ?? 0) + quantity;
 
-    // If exists -> increment
-    const { data: existingItem, error: findErr } = await supabaseAdmin
-      .from("cart_items")
-      .select("id, quantity")
-      .eq("cart_id", cartId)
-      .eq("product_id", productId)
-      .eq("size", size)
+      const { error: updErr } = await supabaseAdmin
+        .from("cart_items")
+        .update({ quantity: newQty })
+        .eq("id", existing.id);
+
+      if (updErr) throw new Error(`update quantity failed: ${updErr.message}`);
+
+      return `✅ Updated cart item (productId: ${productId}${
+        normalizedSize ? `, size: ${normalizedSize}` : ""
+      }) to quantity ${newQty}.`;
+    }
+
+    const { error: insErr } = await supabaseAdmin.from("cart_items").insert({
+      cart_id: cartId,
+      product_id: productId,
+      quantity,
+      size: normalizedSize,
+    });
+
+    if (insErr) throw new Error(`insert cart item failed: ${insErr.message}`);
+
+    return `✅ Added to cart (productId: ${productId}${
+      normalizedSize ? `, size: ${normalizedSize}` : ""
+    }) x${quantity}.`;
+  },
+});
+
+async function ensureActiveCartId(userId: string): Promise<string> {
+  // 1) Try find active cart (case-safe)
+  const { data: existingCart, error: existingErr } = await supabaseAdmin
+    .from("carts")
+    .select("id, status")
+    .eq("user_id", userId)
+    .in("status", ACTIVE_STATUSES)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (existingErr) throw new Error(`get active cart failed: ${existingErr.message}`);
+  if (existingCart?.id) return existingCart.id as string;
+
+  // 2) Try create with status "active"
+  const { data: newCart, error: newCartErr } = await supabaseAdmin
+    .from("carts")
+    .insert({ user_id: userId, status: "active" })
+    .select("id")
+    .single();
+
+  if (!newCartErr && newCart?.id) return newCart.id as string;
+
+  // 3) If duplicate, re-select (handles your carts_one_active_per_user constraint)
+  const msg = newCartErr?.message ?? "";
+  const isDuplicate =
+    msg.toLowerCase().includes("duplicate key value") ||
+    msg.toLowerCase().includes("unique constraint") ||
+    msg.toLowerCase().includes("carts_one_active_per_user");
+
+  if (isDuplicate) {
+    const { data: cartAfter, error: afterErr } = await supabaseAdmin
+      .from("carts")
+      .select("id, status")
+      .eq("user_id", userId)
+      .in("status", ACTIVE_STATUSES)
+      .order("created_at", { ascending: false })
       .limit(1)
       .maybeSingle();
 
-    if (findErr) throw new Error(`cart_items lookup failed: ${findErr.message}`);
+    if (afterErr) throw new Error(`re-check active cart failed: ${afterErr.message}`);
+    if (cartAfter?.id) return cartAfter.id as string;
 
-    if (existingItem?.id) {
-      const newQty = Number(existingItem.quantity ?? 0) + addQty;
+    // Last resort: newest cart for user (status mismatch fallback)
+    const { data: anyCart, error: anyErr } = await supabaseAdmin
+      .from("carts")
+      .select("id, status")
+      .eq("user_id", userId)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
 
-      const { data: updated, error: updErr } = await supabaseAdmin
-        .from("cart_items")
-        .update({ quantity: newQty })
-        .eq("id", existingItem.id)
-        .select("id, cart_id, product_id, size, quantity")
-        .single();
+    if (anyErr) throw new Error(`fallback cart lookup failed: ${anyErr.message}`);
+    if (anyCart?.id) return anyCart.id as string;
+  }
 
-      if (updErr) throw new Error(`cart_items update failed: ${updErr.message}`);
+  throw new Error(`create cart failed: ${msg || "unknown error"}`);
+}
 
-      return { ok: true, action: "updated", cartId, item: updated };
-    }
+async function findCartItem(
+  cartId: string,
+  productId: number,
+  size: string | null
+): Promise<{ id: string; quantity: number } | null> {
+  // ✅ IMPORTANT:
+  // Supabase `.is()` is only for null/boolean. For text values use `.eq()`.
+  let q = supabaseAdmin
+    .from("cart_items")
+    .select("id, quantity")
+    .eq("cart_id", cartId)
+    .eq("product_id", productId);
 
-    // Else insert
-    const { data: inserted, error: insErr } = await supabaseAdmin
-      .from("cart_items")
-      .insert([{ cart_id: cartId, product_id: productId, size, quantity: addQty }])
-      .select("id, cart_id, product_id, size, quantity")
-      .single();
+  q = size === null ? q.is("size", null) : q.eq("size", size);
 
-    if (insErr) throw new Error(`cart_items insert failed: ${insErr.message}`);
+  const { data, error } = await q.limit(1).maybeSingle();
 
-    return { ok: true, action: "inserted", cartId, item: inserted };
-  },
-});
+  if (error) throw new Error(`check cart item failed: ${error.message}`);
+  return data?.id ? (data as any) : null;
+}
