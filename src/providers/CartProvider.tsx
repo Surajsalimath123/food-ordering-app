@@ -84,7 +84,6 @@ export function CartProvider({ children }: PropsWithChildren) {
   const checkout = async (): Promise<boolean> => {
     if (!items.length) return false;
 
-    // subtotal (before loyalty discount)
     const subtotal = total;
 
     try {
@@ -96,7 +95,7 @@ export function CartProvider({ children }: PropsWithChildren) {
       }
       const userId = authData.user.id;
 
-      // ✅ 1) Ask backend what discount applies (server-side enforcement)
+      // ✅ 1) Server pricing (loyalty discount enforcement)
       const { data: pricingData, error: pricingErr } = await supabase.rpc(
         'compute_order_pricing',
         { subtotal }
@@ -117,16 +116,20 @@ export function CartProvider({ children }: PropsWithChildren) {
         used_loyalty_reward: Boolean(p0?.used_loyalty_reward ?? false),
       };
 
-      // charge amount = total_after_discount
       const chargeAmount = pricing.total_after_discount;
-
-      // Stripe expects cents
       const totalInCents = Math.max(0, Math.round(chargeAmount * 100));
 
-      // ✅ 2) TAKE PAYMENT (discounted if reward is available)
-      await payWithStripe(totalInCents);
+      // ✅ 2) TAKE PAYMENT
+      const payResult = await payWithStripe(totalInCents);
 
-      // ✅ 3) Create order as Paid + store pricing breakdown
+      if (!payResult.ok) {
+        // user cancelled or failed — do NOT create order
+        if (payResult.cancelled) return false;
+        Alert.alert('Payment failed', payResult.message);
+        return false;
+      }
+
+      // ✅ 3) Create order (Paid)
       const { data: order, error: orderErr } = await supabase
         .from('orders')
         .insert({

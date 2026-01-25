@@ -69,6 +69,19 @@ export default function UserLayout() {
           ),
         }}
       />
+
+      <Tabs.Screen
+        name="assistant"
+        options={{
+          title: "AI Assistant",
+        }}
+      />
+
+
     </Tabs>
+
+
+        
+
   );
 }

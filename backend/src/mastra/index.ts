@@ -1,21 +1,17 @@
-// src/mastra/index.ts
 import { addToCartTool } from "./tools/addToCartTool";
 import { getCartTool } from "./tools/getCartTool";
 import { removeCartItemTool } from "./tools/removeCartItemTool";
 import { searchMenuTool } from "./tools/searchMenuTool";
-import { updateCartItemTool } from "./tools/updateCartItemTool";
+import { updateQuantityTool } from "./tools/updateQuantityTool";
 
-/**
- * IMPORTANT:
- * Tool order matters because the OpenAI tool list maps them to _0, _1, _2...
- * _0 MUST be searchMenuTool
- */
+import { traceTool } from "./toolTracing";
+
 export const tools = [
-  searchMenuTool,  // _0
-  addToCartTool,   // _1 (your prompt might call it _2; we can align after)
-  getCartTool,
-  updateCartItemTool,
-  removeCartItemTool,
-] as const;
+  traceTool(searchMenuTool),
+  traceTool(addToCartTool),
+  traceTool(getCartTool),
+  traceTool(removeCartItemTool),
+  traceTool(updateQuantityTool),
+];
 
-export const toolsById = Object.fromEntries(tools.map((t) => [t.id, t]));
+export const toolsById = Object.fromEntries(tools.map((t: any) => [t.id, t]));

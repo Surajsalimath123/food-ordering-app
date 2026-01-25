@@ -3,8 +3,8 @@ import { supabase } from '@/lib/supabase';
 import { initPaymentSheet, presentPaymentSheet } from '@stripe/stripe-react-native';
 import { Alert } from 'react-native';
 
-const SUPABASE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL!;
-const ANON_KEY = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY!;
+const SUPABASE_URL = (process.env.EXPO_PUBLIC_SUPABASE_URL ?? '').trim();
+const ANON_KEY = (process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? '').trim();
 
 type PaymentSheetResponse = {
   paymentIntent: string;
@@ -12,31 +12,50 @@ type PaymentSheetResponse = {
   ephemeralKey: string;
 };
 
-async function fetchPaymentSheetParams(amount: number): Promise<PaymentSheetResponse> {
-  // ✅ get user session token
-  const {
-    data: { session },
-    error: sessionErr,
-  } = await supabase.auth.getSession();
+export type PayResult =
+  | { ok: true }
+  | { ok: false; cancelled?: boolean; message: string };
 
+function assertEnv() {
+  if (!SUPABASE_URL) throw new Error('Missing EXPO_PUBLIC_SUPABASE_URL in .env');
+  if (!ANON_KEY) throw new Error('Missing EXPO_PUBLIC_SUPABASE_ANON_KEY in .env');
+}
+
+async function fetchPaymentSheetParams(
+  amountInCents: number,
+  currency: string = 'usd'
+): Promise<PaymentSheetResponse> {
+  assertEnv();
+
+  const amount = Math.round(amountInCents);
+  if (!Number.isFinite(amount) || amount <= 0) {
+    throw new Error(`Invalid amountInCents: ${amountInCents}`);
+  }
+
+  const { data: sessionData, error: sessionErr } = await supabase.auth.getSession();
   if (sessionErr) throw new Error(sessionErr.message);
-  if (!session?.access_token) throw new Error('Not authenticated. Please sign in again.');
+
+  const accessToken = sessionData.session?.access_token;
+  if (!accessToken) throw new Error('Not authenticated. Please sign in again.');
 
   const res = await fetch(`${SUPABASE_URL}/functions/v1/payment-sheet`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       apikey: ANON_KEY,
-      // ✅ IMPORTANT: must be the user's JWT, not anon key
-      Authorization: `Bearer ${session.access_token}`,
+      Authorization: `Bearer ${accessToken}`,
     },
-    body: JSON.stringify({ amount }),
+    body: JSON.stringify({ amount, currency }),
   });
 
-  const data = await res.json().catch(() => null);
+  const data = await res.json().catch(() => ({}));
 
   if (!res.ok) {
-    throw new Error(data?.error ?? 'payment-sheet Edge Function failed');
+    const msg =
+      data?.error ??
+      data?.message ??
+      `payment-sheet failed (HTTP ${res.status})`;
+    throw new Error(msg);
   }
 
   const paymentIntent = data?.paymentIntent;
@@ -50,27 +69,41 @@ async function fetchPaymentSheetParams(amount: number): Promise<PaymentSheetResp
   return { paymentIntent, customer, ephemeralKey };
 }
 
-// A) Alerts inside provider (simple)
-export async function payWithStripe(totalInCents: number) {
-  const { paymentIntent, customer, ephemeralKey } = await fetchPaymentSheetParams(totalInCents);
+export async function payWithStripe(totalInCents: number): Promise<PayResult> {
+  try {
+    const { paymentIntent, customer, ephemeralKey } = await fetchPaymentSheetParams(
+      totalInCents,
+      'usd'
+    );
 
-  const init = await initPaymentSheet({
-    merchantDisplayName: 'Food Ordering App',
-    paymentIntentClientSecret: paymentIntent,
-    customerId: customer,
-    customerEphemeralKeySecret: ephemeralKey,
-    allowsDelayedPaymentMethods: true,
-    returnURL: 'foodorderingapp://stripe-redirect', // safe to keep (optional)
-  });
+    const init = await initPaymentSheet({
+      merchantDisplayName: 'Food Ordering App',
+      paymentIntentClientSecret: paymentIntent,
+      customerId: customer,
+      customerEphemeralKeySecret: ephemeralKey,
+      allowsDelayedPaymentMethods: true,
+      returnURL: 'foodorderingapp://stripe-redirect',
+    });
 
-  if (init.error) throw new Error(init.error.message);
+    if (init.error) throw new Error(init.error.message);
 
-  const present = await presentPaymentSheet();
-  if (present.error) {
-    // if user cancels, Stripe returns an error; you can treat as non-fatal
-    throw new Error(present.error.message);
+    const present = await presentPaymentSheet();
+
+    if (present.error) {
+      const isCancelled =
+        present.error.code === 'Canceled' ||
+        present.error.message?.toLowerCase().includes('canceled');
+
+      if (isCancelled) return { ok: false, cancelled: true, message: 'Payment cancelled' };
+
+      throw new Error(present.error.message);
+    }
+
+    Alert.alert('Success', 'Payment completed!');
+    return { ok: true };
+  } catch (e: any) {
+    const msg = e?.message ?? 'Unknown payment error';
+    Alert.alert('Payment failed', msg);
+    return { ok: false, message: msg };
   }
-
-  Alert.alert('Success', 'Payment completed!');
-  return true;
 }

@@ -1,70 +1,47 @@
 import { createTool } from "@mastra/core/tools";
 import { z } from "zod";
-import { supabaseAdmin } from "../../supabase";
-import { getOrCreateActiveCartId } from "./cartHelpers";
+import { addToCart } from "../../db/cart";
+import { normalizeCartSize, type CartSize } from "./cartHelpers";
 
 export const addToCartTool = createTool({
-  id: "addToCart",
-  description:
-    "Add a product to the user's ACTIVE cart. Reuse existing ACTIVE cart if present. If item exists, increment quantity.",
-  // ✅ Keep schema simple so Mastra won't force null-required fields
+  id: "add_to_cart",
+  description: "Add a menu item to the user's ACTIVE cart by productId, with optional size and quantity.",
+
   inputSchema: z.object({
     userId: z.string().min(1),
-    productId: z.number(),
+    productId: z.number().int().positive(),
+
+    // Always normalize to DB-allowed values: S/M/L/XL
+    size: z
+      .preprocess((v) => normalizeCartSize(v), z.enum(["S", "M", "L", "XL"]))
+      .optional()
+      .default("M"),
+
+    quantity: z.number().int().positive().default(1),
   }),
 
-  execute: async (args: any) => {
-    const userId =
-      String(args?.userId ?? args?.input?.userId ?? args?.inputData?.userId ?? "").trim();
-    const productId = Number(
-      args?.productId ?? args?.input?.productId ?? args?.inputData?.productId
-    );
+  execute: async ({ userId, productId, size, quantity }) => {
+    const normalizedSize = normalizeCartSize(size) as CartSize;
 
-    if (!userId) throw new Error("userId is required");
-    if (!Number.isFinite(productId)) throw new Error("productId must be a number");
+    const result = await addToCart({
+      userId,
+      productId,
+      size: normalizedSize,
+      quantity,
+    });
 
-    const cartId = await getOrCreateActiveCartId(userId);
-
-    // Defaults (your current tool calls don’t pass size/qty)
-    const size = "M";
-    const addQty = 1;
-
-    // If exists -> increment
-    const { data: existingItem, error: findErr } = await supabaseAdmin
-      .from("cart_items")
-      .select("id, quantity")
-      .eq("cart_id", cartId)
-      .eq("product_id", productId)
-      .eq("size", size)
-      .limit(1)
-      .maybeSingle();
-
-    if (findErr) throw new Error(`cart_items lookup failed: ${findErr.message}`);
-
-    if (existingItem?.id) {
-      const newQty = Number(existingItem.quantity ?? 0) + addQty;
-
-      const { data: updated, error: updErr } = await supabaseAdmin
-        .from("cart_items")
-        .update({ quantity: newQty })
-        .eq("id", existingItem.id)
-        .select("id, cart_id, product_id, size, quantity")
-        .single();
-
-      if (updErr) throw new Error(`cart_items update failed: ${updErr.message}`);
-
-      return { ok: true, action: "updated", cartId, item: updated };
-    }
-
-    // Else insert
-    const { data: inserted, error: insErr } = await supabaseAdmin
-      .from("cart_items")
-      .insert([{ cart_id: cartId, product_id: productId, size, quantity: addQty }])
-      .select("id, cart_id, product_id, size, quantity")
-      .single();
-
-    if (insErr) throw new Error(`cart_items insert failed: ${insErr.message}`);
-
-    return { ok: true, action: "inserted", cartId, item: inserted };
+    return {
+      ok: true,
+      action: result.action,
+      cartItemId: result.cartItemId,
+      userId,
+      productId,
+      size: normalizedSize,
+      quantity,
+      message:
+        result.action === "updated"
+          ? `Updated cart item (productId: ${productId}, size: ${normalizedSize}) to quantity ${result.newQuantity}.`
+          : `Added item (productId: ${productId}, size: ${normalizedSize}) x${quantity} to your cart.`,
+    };
   },
 });

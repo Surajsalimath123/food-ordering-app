@@ -1,8 +1,14 @@
-export { addToCartTool as _2 } from "./addToCartTool";
-export { searchMenuTool as _0 } from "./searchMenuTool";
+import { addToCartTool } from "./tools/addToCartTool";
+import { searchMenuTool } from "./tools/searchMenuTool";
 
-// (keep your other tools too if you want)
-export { getCartTool } from "./getCartTool";
-export { removeCartItemTool } from "./removeCartItemTool";
-export { updateCartItemTool } from "./updateCartItemTool";
+import { getCartTool } from "./tools/getCartTool";
+import { removeCartItemTool } from "./tools/removeCartItemTool";
+import { updateQuantityTool } from "./tools/updateQuantityTool";
 
+export const tools = [
+  searchMenuTool,
+  addToCartTool,
+  getCartTool,
+  removeCartItemTool,
+  updateQuantityTool,
+];
