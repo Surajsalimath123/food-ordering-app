@@ -1,348 +1,197 @@
-# food-ordering-app  
-**Expo + React Native + Supabase + Stripe (Test Mode)**
+🍔 Food Ordering App
 
-This repository contains my take-home submission for the Food Ordering App, built using Expo Router with a Supabase backend and Stripe test payments.
+Expo · React Native · Supabase · Stripe (Test Mode)
 
----
+This repository contains my take-home submission for the Food Ordering App.
+The project is a full-stack mobile application built using Expo Router with a Supabase backend, Stripe test payments, and an optional AI Order Assistant.
 
-## 🔀 Important: Branch to Review
-Please check out the submission branch:
+All work is finalized and submitted on the submission branch.
 
-```bash
+🔀 Branch to Review (Final Submission)
+
+Branch: submission/nevryk-takehome (default)
+
+If running locally:
+
 git checkout submission/nevryk-takehome
-All features and documentation are finalized on this branch.
 
 🧱 Tech Stack
+Mobile App
+
 Expo + React Native
 
 TypeScript
 
 Expo Router
 
-Supabase (Auth + PostgreSQL)
+Supabase (Auth, PostgreSQL, Storage)
 
-Stripe (test payment flow)
+Stripe PaymentSheet (Test Mode)
 
-✨ Additional Features Implemented
-1️⃣ Best Seller Badge (UI Enhancement)
-Products marked as popular are highlighted with a “Best Seller” badge to improve discoverability and UX in the menu screen.
+Backend (AI Assistant)
 
-2️⃣ Loyalty Reward System (Progress + Discount)
-Displays order progress (1 → 5) for the logged-in user.
+Node.js + Express
 
-After completing 5 paid orders, the 6th order automatically receives 50% off.
+Mastra Agent
 
-UI updates dynamically to show progress and when the reward is active.
+Supabase Admin Client
 
-3️⃣ Customer Support Tickets (User → Admin Workflow)
-Users can submit support tickets with subject + message.
+OpenAI model (via AI SDK)
 
-Tickets are stored in Supabase and linked to the user account.
+📱 Core App Features
+User Features
 
-Admin dashboard allows:
+User authentication (Supabase Auth)
 
-Viewing all tickets
+Browse menu items
 
-Seeing ticket ID, user ID, timestamp, status
+Product details and size selection
 
-Marking tickets as Closed
+Cart management (add, update, remove items)
+
+Secure checkout using Stripe test payments
+
+View order history
+
+Customer support ticket submission
+
+Admin Features
+
+Product management
+
+View and manage support tickets
+
+Close resolved tickets
+
+✨ Custom Features Implemented
+1️⃣ Best Seller Badge
+
+Popular products are highlighted with a “Best Seller” badge on the menu screen to improve product visibility and user experience.
+
+2️⃣ Loyalty Reward System
+
+A built-in customer loyalty feature:
+
+Displays order progress (1 → 5) in the UI
+
+After completing 5 successful orders, the 6th order automatically receives 50% off
+
+Progress and reward state update dynamically for the logged-in user
+
+3️⃣ Customer Support Ticket System
+
+A complete user → admin support workflow:
+
+Users submit tickets with subject and message
+
+Tickets are stored in Supabase and linked to the user
+
+Admin can:
+
+View all tickets
+
+See ticket metadata (user, timestamp, status)
+
+Mark tickets as Closed
+
+🤖 AI Order Assistant (Optional Feature)
+
+This project includes an AI Order Assistant that helps users interact with the menu and cart using natural language.
+
+Key Characteristics
+
+Built using Mastra Agent
+
+Tool-grounded (no hallucinated menu items)
+
+All recommendations come from real Supabase products
+
+Cart changes persist to Supabase and sync with the app UI
+
+Supports multi-turn conversations
+
+Example Capabilities
+
+“Show me pizza options”
+
+“Add the first one to my cart”
+
+“Show my cart”
+
+“Update the quantity”
+
+“Remove that item”
+
+The assistant interacts with the same cart used by the mobile app, ensuring consistency between AI actions and UI state.
+
+📂 Project Structure
+food-ordering-app/
+├── src/            # Expo mobile app
+├── backend/        # Node + Express + AI Assistant
+├── supabase/       # Supabase schema & migrations
+├── .env.example    # Environment variable template
+└── README.md
 
 ▶️ Running the App Locally
 1️⃣ Install Dependencies
-bash
-Copy code
 npm install
-2️⃣ Environment Variables Setup
+
+2️⃣ Environment Setup
+
 Create a .env file from the template:
 
-bash
-Copy code
 cp .env.example .env
-Fill in .env with the provided test credentials (shared separately by email):
 
-env
-Copy code
+
+Fill in the required values:
+
 EXPO_PUBLIC_SUPABASE_URL=your_supabase_url
 EXPO_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
 EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY=your_stripe_publishable_key
-⚠️ .env is intentionally not committed to GitHub.
-Use .env.example as the reference.
+
+
+.env is intentionally not committed.
+.env.example is provided as a reference.
 
 3️⃣ Start the App
-bash
-Copy code
 npx expo start -c
-Important:
-Expo does NOT reload environment variables automatically.
-Always restart with -c after changing .env.
 
-💳 Stripe Test Payment
-Use the following Stripe test card during checkout:
+
+Expo does not automatically reload environment variables.
+Always restart with -c after modifying .env.
+
+💳 Stripe Test Payments
+
+Use the following test card during checkout:
 
 Card Number: 4242 4242 4242 4242
 
-Expiry Date: Any future date (e.g. 12/34)
+Expiry Date: Any future date
 
 CVC: 123
 
 ZIP: 12345
 
-📚 What I Learned From This Project
-Structuring a production-style Expo Router app with role-based navigation.
+📚 What I Learned
 
-Managing environment variables safely for mobile apps.
+Structuring a production-ready Expo Router application
 
-Implementing real-world features like loyalty rewards and support ticket workflows.
+Managing authentication, data, and storage with Supabase
 
-Integrating Stripe test payments with proper UX handling.
+Implementing real-world UX features like loyalty rewards and support workflows
 
-Designing a clean admin vs user experience using Supabase Auth and data rules.
+Integrating Stripe test payments with proper state handling
+
+Designing a tool-grounded AI assistant that safely interacts with live data
+
+Keeping frontend, backend, and AI logic cleanly separated
 
 📌 Notes for Reviewers
-This project runs entirely in test mode.
 
-No secrets are committed to the repository.
+Project runs entirely in test mode
 
-All custom features are documented above.
+No secrets are committed to the repository
 
-Code is structured for clarity and reviewability.
+All features are implemented and accessible through the app UI
 
-Thank you for reviewing my submission!
-
-yaml
-Copy code
-
-
-# Food Ordering App — AI Order Assistant (Mastra + Supabase)
-
-This project extends a Food Ordering mobile app with an **AI Order Assistant** built using **Mastra**.  
-The assistant is **tool-grounded** (no hallucinated menu items) and **persists cart updates in Supabase** via backend tool calls.
-
-## Key Requirements Met ✅
-- Built with **Mastra Agent**
-- Assistant uses tools to:
-  - **Search menu (Supabase products)** via `searchMenu`
-  - **Recommend items only from tool results**
-  - **Add/update/remove cart items** via tool calls
-  - Cart updates persist in **Supabase** and are visible in the app
-- Supports multi-turn flows like:
-  - “I want pizza suggestions” → “Add the first one”
-  - “Show my cart”
-  - Quantity updates via repeated “add first”
-- Backend provides:
-  - `POST /ai/chat` for assistant chat
-  - `GET /cart?userId=<uuid>` for cart tab in UI
-
----
-
-## Tech Stack
-- **Expo + React Native** (TypeScript)
-- **Supabase** (Postgres + Auth + Storage)
-- **Backend**: Node + Express
-- **Mastra** Agent with tool calls (Supabase Admin client)
-- **Model**: OpenAI (via `@ai-sdk/openai`)
-
----
-
-## Project Structure
-food-ordering-app/
-src/ # Expo app
-backend/ # Node + Express + Mastra agent + tools
-supabase/ # Supabase migrations + seed (required for submission)
-
-yaml
-Copy code
-
----
-
-## Setup Instructions
-
-### 1) App (Expo)
-```bash
-npm install
-npx expo start -c
-2) Supabase (Local or Hosted)
-This app uses Supabase Auth and Postgres tables.
-
-Option A: Hosted Supabase
-Create a Supabase project
-
-Copy credentials into .env (use .env.example as template)
-
-Option B: Local Supabase (recommended for reviewers)
-bash
-Copy code
-npx supabase start
-npx supabase db reset
-If using local, update EXPO_PUBLIC_SUPABASE_URL to local URL.
-
-Backend Setup (Mastra + Tools)
-From backend/:
-
-bash
-Copy code
-npm install
-npm run dev
-Backend runs at:
-
-http://localhost:8787
-
-Environment variables:
-
-Create backend/.env from .env.example
-
-Must include Supabase service role for server-side DB access
-
-Supabase Schema + Seed
-Tables Used
-products (menu)
-
-carts (one active per user)
-
-cart_items (items in cart)
-
-Migrations
-All schema changes should be in:
-
-bash
-Copy code
-supabase/migrations/
-Seed
-Recommended seed file:
-
-bash
-Copy code
-supabase/seed.sql
-To apply locally:
-
-bash
-Copy code
-npx supabase db reset
-Tool Definitions (Mastra)
-1) searchMenu
-Searches real menu items in Supabase products table by name (case-insensitive).
-
-Input: { query: string }
-
-Output: { matches: Product[], bestMatch }
-
-Rule: assistant must recommend ONLY from tool results.
-
-2) getCart
-Fetches user’s current active cart and items (joins products).
-
-Input: { userId: string }
-
-Output: { cartId, status, items[] }
-
-3) add_to_cart
-Adds an item to the user's active cart.
-
-If same product+size exists, it increments quantity
-
-Otherwise inserts a new cart_item
-
-Input: { userId, productId, size?, quantity }
-
-4) removeCartItem
-Deletes a cart item by cart_items.id.
-
-Input: { userId, cartItemId }
-
-5) updateQuantity
-Updates a cart item quantity by cart_items.id.
-
-Input: { userId, cartItemId, quantity }
-
-Example Chat Transcripts (End-to-End with Tool Calls)
-Transcript 1 — Pizza suggestions → Add first → Cart updates
-User: I want pizza suggestions
-Assistant (calls searchMenu query="pizza"):
-Pizza suggestions:
-
-Mutton-pizza — $20.00 (productId: 13)
-
-Spoof Pizza — $13.99 (productId: 32)
-Say: “add the first one” to add it to your cart.
-
-User: Add the first one
-Assistant (calls add_to_cart userId=..., productId=13, size="M", quantity=1):
-✅ Added/updated Mutton-pizza in your cart.
-
-User: Show my cart
-Assistant (calls getCart userId=...):
-🛒 Cart
-
-3× Mutton-pizza (M) …
-(visible in app Cart tab as well)
-
-Transcript 2 — Show cart → Update quantity
-User: Show my cart
-Assistant (calls getCart): returns items
-
-User: Update Mutton-pizza to quantity 2
-Assistant (calls getCart, finds matching cart_item_id, then calls updateQuantity):
-✅ Updated quantity to 2.
-
-Transcript 3 — Remove an item
-User: Remove Ultimate Pepperoni
-Assistant (calls getCart, finds cart_item_id, then calls removeCartItem):
-✅ Removed Ultimate Pepperoni from your cart.
-
-How Robustness & Scalability Can Be Improved
-If I had more time, I would:
-
-Conversation memory / state
-
-Store last search results per user (server-side) so “add the second one” always works even minutes later.
-
-Stronger query grounding
-
-Enhance searchMenu to support filters: price cap, vegetarian, dairy-free, spicy tags, etc.
-
-Add a structured product_attributes table or JSON column for diet tags.
-
-Validation & authorization
-
-Ensure updateQuantity / removeCartItem verify the item belongs to the user before mutating.
-
-Better UX
-
-Format responses nicely (subtotal, totals)
-
-Hide internal IDs in chat UI, keep them only for tool use
-
-Production reliability
-
-Add retries + circuit breaker for DB calls
-
-Add observability: request IDs, structured logs, and tool-call audit logging
-
-AI Tools Used
-ChatGPT (for code iteration + debugging)
-
-(Optional) GitHub Copilot / Copilot Chat for inline suggestions (if enabled)
-
-Submission Links
-Repo: (paste your repo URL here)
-Supabase migrations are included under supabase/migrations.
-
-yaml
-Copy code
-
----
-
-# ✅ What you must do next (to match the email exactly)
-
-## 1) Ensure Supabase migrations exist in `/supabase/migrations`
-Right now your repo has a `supabase/` folder — but you must confirm it includes:
-- `supabase/migrations/*.sql`
-- optionally `supabase/seed.sql`
-
-If you don’t have migrations yet, do this **locally**:
-
-```bash
-npx supabase init   # if not already
-npx supabase db dump --file supabase/migrations/0001_schema.sql
-(That ensures reviewers can recreate schema.)
-
+Final submission branch: submission/nevryk-takehome
