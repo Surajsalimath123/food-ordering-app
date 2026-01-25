@@ -1,5 +1,4 @@
 // backend/src/server.ts
-
 import cors from "cors";
 import "dotenv/config";
 import express from "express";
@@ -7,20 +6,19 @@ import { z } from "zod";
 
 import { orderAssistantAgent } from "./mastra/agents/orderAssistantAgent";
 
-// ✅ Direct tool imports (deterministic core flows)
 import { addToCartTool } from "./mastra/tools/addToCartTool";
 import { getCartTool } from "./mastra/tools/getCartTool";
+import { removeCartItemTool } from "./mastra/tools/removeCartItemTool";
 import { searchMenuTool } from "./mastra/tools/searchMenuTool";
+import { updateQuantityTool } from "./mastra/tools/updateQuantityTool";
+
+import { getTraces, runWithTraces } from "./mastra/toolTracing";
 
 const app = express();
-
 app.use(cors());
 app.use(express.json({ limit: "1mb" }));
 
-// Health check
-app.get("/", (_req, res) => {
-  res.json({ ok: true, message: "✅ Backend booted" });
-});
+app.get("/", (_req, res) => res.json({ ok: true, message: "Backend booted" }));
 
 const ChatBodySchema = z.object({
   userId: z.string().min(1),
@@ -40,9 +38,9 @@ type ChatMsg = { role: "user" | "assistant" | "system"; content: string };
 function normalizeMessages(input: unknown): ChatMsg[] {
   if (!Array.isArray(input)) return [];
   const out: ChatMsg[] = [];
-
   for (const raw of input) {
     if (!raw || typeof raw !== "object") continue;
+
     const roleRaw = (raw as any).role;
     const contentRaw = (raw as any).content;
 
@@ -68,7 +66,6 @@ function pickLatestUserText(message?: string, messages?: ChatMsg[]): string {
   return "";
 }
 
-// ✅ Map non-UUID ids to UUID for curl/local testing
 function toUuidLikeUserId(userId: string) {
   const uuidRegex =
     /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -82,41 +79,196 @@ function toUuidLikeUserId(userId: string) {
   return map[userId] ?? "00000000-0000-0000-0000-000000000001";
 }
 
-function formatCart(cart: any) {
+function formatCartClean(cart: any) {
   const items: any[] = cart?.items ?? [];
-  if (!cart?.cartId || items.length === 0) return "🛒 Your cart is empty.";
+  if (!cart?.cartId || items.length === 0) return "Cart is empty.";
 
-  const lines = items.map((it, idx) => {
+  const lines = items.map((it: any, idx: number) => {
     const name = it?.products?.name ?? "Item";
     const price = it?.products?.price;
     const qty = it?.quantity ?? 1;
     const size = it?.size ? ` (${it.size})` : "";
-    const priceTxt = typeof price === "number" ? ` — $${price.toFixed(2)}` : "";
-    return `${idx + 1}. ${qty}× ${name}${size}${priceTxt} (cart_item_id: ${it.id})`;
+    const priceTxt = typeof price === "number" ? ` - $${price.toFixed(2)}` : "";
+    return `${idx + 1}. ${qty}x ${name}${size}${priceTxt}`;
   });
 
-  return `🛒 Cart\n${lines.join("\n")}`;
-}
-
-function formatSuggestions(matches: any[], topN = 2) {
-  const picks = (matches ?? []).slice(0, topN);
-  if (picks.length === 0) return "Sorry — no pizzas found in the menu right now.";
-
-  const lines = picks.map((p, idx) => {
-    const name = p?.name ?? `Pizza ${idx + 1}`;
-    const price = p?.price;
-    const priceTxt = typeof price === "number" ? `$${price.toFixed(2)}` : "";
-    const idTxt = typeof p?.id !== "undefined" ? ` (productId: ${p.id})` : "";
-    return `${idx + 1}. ${name}${priceTxt ? ` — ${priceTxt}` : ""}${idTxt}`;
-  });
-
-  return `🍕 Pizza suggestions:\n${lines.join("\n")}`;
+  return `Cart\n${lines.join("\n")}`;
 }
 
 /**
- * ✅ FIXES your Cart tab error: "Cannot GET /cart"
- * Frontend should call: GET /cart?userId=<uuid>
+ * Size parsing (DB-valid): S, M, L, XL
+ * Users may say: small/medium/regular/large/xl/extra large OR S/M/L/XL
  */
+function normalizeSizeToken(token: string): "S" | "M" | "L" | "XL" {
+  const t = token.trim().toLowerCase();
+
+  if (t === "s" || t === "sm" || t === "small") return "S";
+
+  if (
+    t === "m" ||
+    t === "med" ||
+    t === "medium" ||
+    t === "regular" ||
+    t === "reg" ||
+    t === "normal" ||
+    t === "standard"
+  )
+    return "M";
+
+  if (t === "l" || t === "lg" || t === "large" || t === "big") return "L";
+
+  if (
+    t === "xl" ||
+    t === "extra large" ||
+    t === "extra-large" ||
+    t === "x-large" ||
+    t === "x large"
+  )
+    return "XL";
+
+  return "M";
+}
+
+function extractSizeAndCleanQuery(addTextLower: string): {
+  size: "S" | "M" | "L" | "XL";
+  query: string;
+} {
+  // Normalize multi-word variants first so regex can catch them
+  let cleaned = addTextLower
+    .replace(/\bextra[\s-]?large\b/gi, "xl")
+    .replace(/\bx[\s-]?large\b/gi, "xl")
+    .trim();
+
+  // Match size optionally preceded by "size"
+  const sizeRegex =
+    /\b(size\s+)?(small|sm|s|medium|med|m|regular|reg|normal|standard|large|lg|l|xl)\b/i;
+
+  let size: "S" | "M" | "L" | "XL" = "M";
+
+  const match = cleaned.match(sizeRegex);
+  if (match?.[2]) {
+    size = normalizeSizeToken(match[2]);
+    cleaned = cleaned.replace(sizeRegex, " ");
+  }
+
+  // Remove stray "size" word if left behind
+  cleaned = cleaned.replace(/\bsize\b/gi, " ");
+
+  // Collapse spaces
+  cleaned = cleaned.replace(/\s+/g, " ").trim();
+
+  return { size, query: cleaned };
+}
+
+function extractPriceCap(text: string): number | null {
+  const m =
+    text.match(/under\s*\$?\s*(\d+(\.\d+)?)/i) ||
+    text.match(/below\s*\$?\s*(\d+(\.\d+)?)/i) ||
+    text.match(/<=\s*\$?\s*(\d+(\.\d+)?)/i);
+  if (!m) return null;
+
+  const n = Number(m[1]);
+  return Number.isFinite(n) ? n : null;
+}
+
+function extractIndexCommand(text: string): number | null {
+  const m = text.match(/^(add|remove)\s+(\d+)$/i);
+  if (!m) return null;
+
+  const idx = Number(m[2]);
+  return Number.isFinite(idx) ? idx : null;
+}
+
+function extractOrdinalAdd(text: string): number | null {
+  if (/add\s+the\s+first/i.test(text) || /^add\s+first/i.test(text)) return 1;
+  if (/add\s+the\s+second/i.test(text) || /^add\s+second/i.test(text)) return 2;
+  if (/add\s+the\s+third/i.test(text) || /^add\s+third/i.test(text)) return 3;
+  return null;
+}
+
+function extractIncreaseFirst(text: string): boolean {
+  return /increase\s+quantity\s+of\s+the\s+first\s+item/i.test(text);
+}
+
+function extractRemoveSecond(text: string): boolean {
+  return /remove\s+the\s+second\s+item/i.test(text);
+}
+
+function extractRemoveByNumber(text: string): number | null {
+  const m = text.match(/remove\s+(item\s+)?(\d+)/i);
+  if (!m) return null;
+
+  const idx = Number(m[2]);
+  return Number.isFinite(idx) ? idx : null;
+}
+
+function isShowCart(text: string) {
+  const t = text.toLowerCase();
+  return (
+    t === "show cart" ||
+    t.includes("show my cart") ||
+    t.includes("view cart") ||
+    t === "my cart"
+  );
+}
+
+function isSuggestions(text: string) {
+  const t = text.toLowerCase();
+  return (
+    t === "suggestions" ||
+    t.includes("pizza suggestions") ||
+    (t.includes("suggest") && (t.includes("pizza") || t.includes("pizzas"))) ||
+    t.includes("suggest me")
+  );
+}
+
+function isSpicyUnder(text: string) {
+  const t = text.toLowerCase();
+  return (
+    t.includes("spicy") && (t.includes("under") || t.includes("below") || t.includes("<="))
+  );
+}
+
+function isGenericUnder(text: string) {
+  const t = text.toLowerCase();
+  return (t.includes("under") || t.includes("below") || t.includes("<=")) && !t.includes("spicy");
+}
+
+// store last shown suggestions per user
+type Suggestion = { id: number; name: string; price?: number };
+const lastSuggestionsByUser = new Map<string, Suggestion[]>();
+
+function formatSuggestionsClean(list: Suggestion[]) {
+  if (!list.length) return "No matching items found.";
+
+  const lines = list.slice(0, 5).map((p, i) => {
+    const priceTxt = typeof p.price === "number" ? ` - $${p.price.toFixed(2)}` : "";
+    return `${i + 1}. ${p.name}${priceTxt}`;
+  });
+
+  return `Suggestions\n${lines.join("\n")}\n\nSay: add 1 or add 2`;
+}
+
+async function toolSearchAndFilter(query: string, priceCap: number | null) {
+  const r = await searchMenuTool.execute({ query });
+  const matches: any[] = r?.matches ?? [];
+
+  const cleaned: Suggestion[] = matches
+    .filter((m) => typeof m?.id === "number")
+    .map((m) => ({
+      id: m.id,
+      name: String(m.name ?? "Item"),
+      price: typeof m.price === "number" ? m.price : undefined,
+    }));
+
+  const filtered =
+    priceCap == null
+      ? cleaned
+      : cleaned.filter((p) => typeof p.price === "number" && p.price <= priceCap);
+
+  return filtered;
+}
+
 app.get("/cart", async (req, res) => {
   try {
     const userIdRaw = String(req.query.userId ?? "").trim();
@@ -125,13 +277,19 @@ app.get("/cart", async (req, res) => {
     }
 
     const effectiveUserId = toUuidLikeUserId(userIdRaw);
-    const cart = await getCartTool.execute({ userId: effectiveUserId });
 
-    if (cart?.error) {
-      return res.status(500).json({ ok: false, error: cart.error });
+    const result = await runWithTraces(async () => {
+      const cart = await getCartTool.execute({ userId: effectiveUserId });
+      return { cart };
+    });
+
+    const traces = getTraces();
+
+    if ((result as any).cart?.error) {
+      return res.status(500).json({ ok: false, error: (result as any).cart.error, traces });
     }
 
-    return res.json({ ok: true, ...cart });
+    return res.json({ ok: true, ...(result as any).cart, traces });
   } catch (e: any) {
     return res.status(500).json({ ok: false, error: e?.message ?? "Server error" });
   }
@@ -152,180 +310,184 @@ app.post("/ai/chat", async (req, res) => {
 
     const normalizedMsgs = normalizeMessages(messages);
     const rawText = pickLatestUserText(message, normalizedMsgs);
-    const text = rawText.toLowerCase();
+    const text = rawText.trim();
+    const lower = text.toLowerCase();
 
-    const wantsShowCart =
-      text === "show cart" ||
-      text.includes("show my cart") ||
-      text.includes("view cart") ||
-      text.includes("my cart") ||
-      (text.includes("cart") && !text.includes("add") && !text.includes("remove"));
-
-    const wantsPizzaSuggestions =
-      text.includes("pizza suggestions") ||
-      (text.includes("suggest") && text.includes("pizza")) ||
-      text === "suggest pizza" ||
-      text === "suggest pizzas" ||
-      text === "i want pizza suggestions";
-
-    // ✅ IMPORTANT: handle "Add the first one" as a standalone message
-    const wantsAddFirstOnly =
-      text === "add the first one" ||
-      text === "add first" ||
-      text.includes("add the first one") ||
-      text.includes("add first one") ||
-      text.includes("add first");
-
-    const wantsAddFirstInline =
-      (text.includes("suggest") && text.includes("add") && text.includes("first")) ||
-      text.includes("add the first") ||
-      text.includes("add first");
-
-    // ------------------------------------------------------------
-    // ✅ 1) SHOW CART (always tool call)
-    // ------------------------------------------------------------
-    if (wantsShowCart) {
-      const cart = await getCartTool.execute({ userId: effectiveUserId });
-
-      if (cart?.error) {
-        return res.json({ ok: true, message: `❌ getCart error: ${cart.error}` });
+    const result = await runWithTraces(async () => {
+      // 1) show cart
+      if (isShowCart(text)) {
+        const cart = await getCartTool.execute({ userId: effectiveUserId });
+        return { message: formatCartClean(cart), mode: "show_cart" };
       }
 
-      return res.json({ ok: true, message: formatCart(cart) });
-    }
+      // 2) suggestions (default pizza)
+      if (isSuggestions(text)) {
+        const list = await toolSearchAndFilter("pizza", null);
+        lastSuggestionsByUser.set(effectiveUserId, list);
+        return { message: formatSuggestionsClean(list.slice(0, 2)), mode: "suggestions" };
+      }
 
-    // ------------------------------------------------------------
-    // ✅ 2) PIZZA SUGGESTIONS (always tool call)
-    // ------------------------------------------------------------
-    if (wantsPizzaSuggestions) {
-      const menuResult = await searchMenuTool.execute({ query: "pizza" });
-      const matches: any[] = menuResult?.matches ?? [];
-      const suggestionText = formatSuggestions(matches, 2);
+      // 3) spicy under $X
+      if (isSpicyUnder(text)) {
+        const cap = extractPriceCap(text) ?? 15;
+        const list = await toolSearchAndFilter("spicy", cap);
+        lastSuggestionsByUser.set(effectiveUserId, list);
+        return { message: formatSuggestionsClean(list.slice(0, 2)), mode: "spicy_under" };
+      }
 
-      // If user asked "suggest 2 pizzas and add the first one"
-      if (wantsAddFirstInline) {
-        if (matches.length === 0) {
-          return res.json({
-            ok: true,
-            message: `Sorry — I couldn’t find pizzas right now.`,
-          });
+      // 4) under $X (generic)
+      if (isGenericUnder(text)) {
+        const cap = extractPriceCap(text);
+        const list = await toolSearchAndFilter("pizza", cap);
+        lastSuggestionsByUser.set(effectiveUserId, list);
+        return { message: formatSuggestionsClean(list.slice(0, 2)), mode: "under_cap" };
+      }
+
+      // 5) add by ordinal or "add 1/add 2"
+      const ordinal = extractOrdinalAdd(lower);
+      const idxFromAddN = lower.match(/^add\s+(\d+)$/) ? extractIndexCommand(lower) : null;
+      const addIndex = ordinal ?? idxFromAddN;
+
+      if (addIndex != null) {
+        const list = lastSuggestionsByUser.get(effectiveUserId) ?? [];
+        const pick = list[addIndex - 1];
+        if (!pick) {
+          return {
+            message: `I do not have suggestion ${addIndex}. Type "Suggestions" first.`,
+            mode: "add_missing",
+          };
         }
 
-        const first = matches[0];
-        const productId = first?.id;
-
-        if (typeof productId !== "number") {
-          return res.json({
-            ok: true,
-            message:
-              suggestionText +
-              "\n\n❌ I found pizzas but productId was not a number. Check products.id type.",
-          });
-        }
-
-        const addResult = await addToCartTool.execute({
+        await addToCartTool.execute({
           userId: effectiveUserId,
-          productId,
+          productId: pick.id,
           quantity: 1,
           size: "M",
         });
 
-        return res.json({
-          ok: true,
-          message: `${suggestionText}\n\n${String(addResult)}`,
-        });
+        return { message: `Added: ${pick.name} (M)`, mode: "add_ok" };
       }
 
-      return res.json({
-        ok: true,
-        message: `${suggestionText}\n\nSay: “add the first one” to add it to your cart.`,
-      });
-    }
+      // 6) increase quantity of first item
+      if (extractIncreaseFirst(lower)) {
+        const cart = await getCartTool.execute({ userId: effectiveUserId });
+        const items: any[] = cart?.items ?? [];
+        if (!items.length) return { message: "Cart is empty.", mode: "inc_empty" };
 
-    // ------------------------------------------------------------
-    // ✅ 3) ADD FIRST ONE (standalone) — fixes your screenshot issue
-    // ------------------------------------------------------------
-    if (wantsAddFirstOnly) {
-      const menuResult = await searchMenuTool.execute({ query: "pizza" });
-      const matches: any[] = menuResult?.matches ?? [];
+        const first = items[0];
+        const newQty = Number(first.quantity ?? 1) + 1;
 
-      if (matches.length === 0) {
-        return res.json({
-          ok: true,
-          message: `Sorry — I couldn’t find pizzas right now.`,
+        await updateQuantityTool.execute({
+          userId: effectiveUserId,
+          cartItemId: first.id,
+          quantity: newQty,
         });
+
+        return { message: `Updated item 1 quantity to ${newQty}.`, mode: "inc_ok" };
       }
 
-      const first = matches[0];
-      const productId = first?.id;
+      // 7) remove second item
+      if (extractRemoveSecond(lower)) {
+        const cart = await getCartTool.execute({ userId: effectiveUserId });
+        const items: any[] = cart?.items ?? [];
+        if (items.length < 2) {
+          return { message: "There is no second item to remove.", mode: "rm_no2" };
+        }
 
-      if (typeof productId !== "number") {
-        return res.json({
-          ok: true,
-          message: `I found pizzas but productId was not a number.`,
+        await removeCartItemTool.execute({
+          userId: effectiveUserId,
+          cartItemId: items[1].id,
         });
+
+        return { message: "Removed item 2.", mode: "rm2_ok" };
       }
 
-      const addResult = await addToCartTool.execute({
-        userId: effectiveUserId,
-        productId,
-        quantity: 1,
-        size: "M",
-      });
+      // 8) remove N (by number)
+      const rmIdx = lower.startsWith("remove") ? extractRemoveByNumber(lower) : null;
+      if (rmIdx != null) {
+        const cart = await getCartTool.execute({ userId: effectiveUserId });
+        const items: any[] = cart?.items ?? [];
+        const pick = items[rmIdx - 1];
+        if (!pick) {
+          return { message: `There is no item ${rmIdx} in your cart.`, mode: "rm_missing" };
+        }
 
-      return res.json({
-        ok: true,
-        message: `✅ Added the first suggestion (${first.name}).\n${String(addResult)}`,
-      });
-    }
+        await removeCartItemTool.execute({
+          userId: effectiveUserId,
+          cartItemId: pick.id,
+        });
 
-    // ------------------------------------------------------------
-    // Fallback: let agent handle other chat (optional)
-    // ------------------------------------------------------------
-    const finalMessages: ChatMsg[] =
-      normalizedMsgs.length > 0
-        ? normalizedMsgs
-        : typeof message === "string" && message.trim()
+        return { message: `Removed item ${rmIdx}.`, mode: "rm_ok" };
+      }
+
+      // 9) add <name> <optional size> (supports small/large/xl anywhere)
+      if (lower.startsWith("add ")) {
+        const raw = lower.replace(/^add\s+/i, "").trim();
+        const { size, query } = extractSizeAndCleanQuery(raw);
+
+        if (!query) {
+          return { message: "Tell me what item to add.", mode: "add_empty_query" };
+        }
+
+        const list = await toolSearchAndFilter(query, null);
+        if (!list.length) return { message: "No matching items found.", mode: "add_nomatch" };
+
+        const pick = list[0];
+
+        await addToCartTool.execute({
+          userId: effectiveUserId,
+          productId: pick.id,
+          quantity: 1,
+          size,
+        });
+
+        return { message: `Added: ${pick.name} (${size})`, mode: "add_named" };
+      }
+
+      // 10) fallback to agent for anything else
+      const finalMessages: ChatMsg[] =
+        normalizedMsgs.length > 0
+          ? normalizedMsgs
+          : typeof message === "string" && message.trim()
           ? [{ role: "user", content: message.trim() }]
           : [];
 
-    if (finalMessages.length === 0) {
-      return res.status(400).json({
-        ok: false,
-        error: "Either 'message' or 'messages' is required",
+      if (finalMessages.length === 0) return { message: "Empty message.", mode: "empty" };
+
+      const agentMessages: ChatMsg[] = [
+        {
+          role: "system",
+          content: `userId="${effectiveUserId}". Always include this exact userId in every tool call input.`,
+        },
+        ...finalMessages,
+      ];
+
+      const agentResult: any = await (orderAssistantAgent as any).generate(agentMessages, {
+        maxSteps: 8,
       });
-    }
 
-    const agentMessages: ChatMsg[] = [
-      {
-        role: "system",
-        content: `userId="${effectiveUserId}". Always include this exact userId in every tool call input.`,
-      },
-      ...finalMessages,
-    ];
+      const out =
+        agentResult?.text ??
+        agentResult?.message ??
+        agentResult?.content ??
+        agentResult?.output_text ??
+        (typeof agentResult === "string" ? agentResult : JSON.stringify(agentResult));
 
-    const result: any = await (orderAssistantAgent as any).generate(agentMessages, {
-      maxSteps: 8,
+      return { message: String(out), mode: "agent" };
     });
 
-    const out =
-      result?.text ??
-      result?.message ??
-      result?.content ??
-      result?.output_text ??
-      (typeof result === "string" ? result : JSON.stringify(result));
+    const traces = getTraces();
 
-    return res.json({ ok: true, message: String(out) });
+    return res.json({
+      ok: true,
+      message: (result as any).message,
+      traces,
+    });
   } catch (e: any) {
-    console.error("❌ /ai/chat error:", e);
-    return res.status(500).json({
-      ok: false,
-      error: e?.message ?? "Server error",
-    });
+    console.error("/ai/chat error:", e);
+    return res.status(500).json({ ok: false, error: e?.message ?? "Server error" });
   }
 });
 
 const PORT = Number(process.env.PORT ?? 8787);
-app.listen(PORT, () => {
-  console.log(`✅ backend running: http://localhost:${PORT}`);
-});
+app.listen(PORT, () => console.log(`backend running: http://localhost:${PORT}`));

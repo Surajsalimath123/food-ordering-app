@@ -1,148 +1,70 @@
-import { supabase } from "../supabase";
+import { getOrCreateActiveCartId, normalizeCartSize, type CartSize } from "../mastra/tools/cartHelpers";
+import { supabaseAdmin } from "../supabase";
 
-export type CartRow = {
-  id: string;
-  user_id: string;
-  status: "active" | "completed";
-};
-
-export type CartItem = {
-  id: string;
-  cartId: string;
+type AddToCartParams = {
+  userId: string;
   productId: number;
-  size: string | null;
-  quantity: number;
+  size?: unknown; // allow raw values, normalize inside
+  quantity?: number;
 };
 
-export async function getActiveCart(userId: string): Promise<CartRow | null> {
-  const { data, error } = await supabase
-    .from("carts")
-    .select("id,user_id,status")
-    .eq("user_id", userId)
-    .eq("status", "active")
-    .single();
+export async function addToCart(params: AddToCartParams) {
+  const userId = String(params.userId).trim();
+  const productId = Number(params.productId);
+  const quantity = Math.max(1, Number(params.quantity ?? 1));
+  const size: CartSize = normalizeCartSize(params.size);
 
-  if (error) {
-    if ((error as any).code === "PGRST116") return null;
-    throw error;
-  }
+  if (!userId) throw new Error("userId is required");
+  if (!Number.isFinite(productId) || productId <= 0) throw new Error("productId is invalid");
 
-  return data as CartRow;
-}
+  const cartId = await getOrCreateActiveCartId(userId);
 
-export async function ensureActiveCart(userId: string): Promise<CartRow> {
-  const existing = await getActiveCart(userId);
-  if (existing) return existing;
-
-  const { data, error } = await supabase
-    .from("carts")
-    .insert({ user_id: userId, status: "active" })
-    .select("id,user_id,status")
-    .single();
-
-  if (error) throw error;
-  return data as CartRow;
-}
-
-export async function getCartItems(cartId: string): Promise<CartItem[]> {
-  const { data, error } = await supabase
-    .from("cart_items")
-    .select("id,cart_id,product_id,size,quantity")
-    .eq("cart_id", cartId)
-    .order("created_at", { ascending: true });
-
-  if (error) throw error;
-
-  return (data ?? []).map((row: any) => ({
-    id: row.id,
-    cartId: row.cart_id,
-    productId: row.product_id,
-    size: row.size ?? null,
-    quantity: row.quantity ?? 0,
-  }));
-}
-
-/**
- * Decrement quantity. If qty hits 0 -> delete row.
- */
-export async function decrementCartItem(
-  userId: string,
-  productId: number,
-  size: string | null,
-  removeQty: number
-) {
-  const cart = await getActiveCart(userId);
-  if (!cart) return { changed: false, reason: "NO_ACTIVE_CART" as const };
-
-  const { data: existing, error: findErr } = await supabase
+  // Check if item already exists (same product + size)
+  const { data: existing, error: existErr } = await supabaseAdmin
     .from("cart_items")
     .select("id,quantity")
-    .eq("cart_id", cart.id)
+    .eq("cart_id", cartId)
     .eq("product_id", productId)
     .eq("size", size)
     .maybeSingle();
 
-  if (findErr) throw findErr;
-  if (!existing) return { changed: false, reason: "NOT_FOUND" as const };
+  if (existErr) throw new Error(`cart_items lookup failed: ${existErr.message}`);
 
-  const currentQty = existing.quantity ?? 0;
-  const newQty = currentQty - removeQty;
+  if (existing?.id) {
+    const newQuantity = Number(existing.quantity ?? 0) + quantity;
 
-  if (newQty <= 0) {
-    const { error: delErr } = await supabase
+    const { error: updErr } = await supabaseAdmin
       .from("cart_items")
-      .delete()
+      .update({ quantity: newQuantity, updated_at: new Date().toISOString() })
       .eq("id", existing.id);
-    if (delErr) throw delErr;
-    return { changed: true, deleted: true as const };
+
+    if (updErr) throw new Error(`cart_items update failed: ${updErr.message}`);
+
+    return {
+      action: "updated" as const,
+      cartItemId: existing.id,
+      newQuantity,
+    };
   }
 
-  const { error: upErr } = await supabase
+  const { data: inserted, error: insErr } = await supabaseAdmin
     .from("cart_items")
-    .update({ quantity: newQty })
-    .eq("id", existing.id);
-  if (upErr) throw upErr;
+    .insert([
+      {
+        cart_id: cartId,
+        product_id: productId,
+        size,
+        quantity,
+      },
+    ])
+    .select("id,quantity")
+    .single();
 
-  return { changed: true, deleted: false as const, newQty };
-}
+  if (insErr) throw new Error(`cart_items insert failed: ${insErr.message}`);
 
-/**
- * Set quantity (<=0 deletes)
- */
-export async function setCartItemQuantity(
-  userId: string,
-  productId: number,
-  size: string | null,
-  quantity: number
-) {
-  const cart = await getActiveCart(userId);
-  if (!cart) return { changed: false, reason: "NO_ACTIVE_CART" as const };
-
-  const { data: existing, error: findErr } = await supabase
-    .from("cart_items")
-    .select("id")
-    .eq("cart_id", cart.id)
-    .eq("product_id", productId)
-    .eq("size", size)
-    .maybeSingle();
-
-  if (findErr) throw findErr;
-  if (!existing) return { changed: false, reason: "NOT_FOUND" as const };
-
-  if (quantity <= 0) {
-    const { error: delErr } = await supabase
-      .from("cart_items")
-      .delete()
-      .eq("id", existing.id);
-    if (delErr) throw delErr;
-    return { changed: true, deleted: true as const };
-  }
-
-  const { error: upErr } = await supabase
-    .from("cart_items")
-    .update({ quantity })
-    .eq("id", existing.id);
-
-  if (upErr) throw upErr;
-  return { changed: true, deleted: false as const };
+  return {
+    action: "inserted" as const,
+    cartItemId: inserted.id,
+    newQuantity: inserted.quantity,
+  };
 }

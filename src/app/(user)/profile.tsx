@@ -13,6 +13,15 @@ export default function ProfileScreen() {
     })();
   }, []);
 
+  useEffect(() => {
+  (async () => {
+    const { data: { session } } = await supabase.auth.getSession();
+    console.log("ACCESS TOKEN:", session?.access_token);
+  })();
+}, []);
+
+
+
   const onLogout = async () => {
     const { error } = await supabase.auth.signOut();
     if (error) Alert.alert('Logout failed', error.message);

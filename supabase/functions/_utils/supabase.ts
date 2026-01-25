@@ -1,84 +1,107 @@
+// supabase/functions/_utils/supabase.ts
 import { createClient } from "jsr:@supabase/supabase-js@2";
 
-type SupabaseClient = ReturnType<typeof createClient>;
+type StripeLike = any;
 
-function getEnv(name: string) {
-  const v = Deno.env.get(name);
-  if (!v) throw new Error(`Missing env var: ${name}`);
-  return v;
+function getBearerToken(req: Request): string | null {
+  const auth =
+    req.headers.get("authorization") ?? req.headers.get("Authorization");
+  if (!auth) return null;
+
+  const parts = auth.split(" ");
+  if (parts.length !== 2) return null;
+
+  const [scheme, token] = parts;
+  if (scheme.toLowerCase() !== "bearer") return null;
+
+  return token?.trim() || null;
 }
 
-export function getSupabaseClient(req: Request): SupabaseClient {
-  const supabaseUrl = getEnv("SUPABASE_URL");
-  const supabaseAnonKey = getEnv("SUPABASE_ANON_KEY");
+export function createSupabaseAdminClient() {
+  const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? Deno.env.get("SUPABASE_URL") ?? "";
+  const serviceKey =
+    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ??
+    Deno.env.get("SUPABASE_SERVICE_KEY") ??
+    Deno.env.get("SUPABASE_SERVICE_ROLE") ??
+    "";
 
-  return createClient(supabaseUrl, supabaseAnonKey, {
-    global: {
-      headers: {
-        Authorization: req.headers.get("Authorization") ?? "",
-      },
-    },
+  if (!supabaseUrl) throw new Error("Missing SUPABASE_URL env var");
+  if (!serviceKey) throw new Error("Missing SUPABASE_SERVICE_ROLE_KEY env var");
+
+  return createClient(supabaseUrl, serviceKey, {
+    auth: { persistSession: false },
   });
 }
 
-export async function getUser(req: Request) {
-  const supabase = getSupabaseClient(req);
+export async function getUserFromRequest(req: Request) {
+  const token = getBearerToken(req);
+  if (!token) {
+    throw new Error("Missing Authorization Bearer token");
+  }
 
-  const { data, error } = await supabase.auth.getUser();
+  // Important: Use admin client but pass the user token explicitly
+  const supabase = createSupabaseAdminClient();
+  const { data, error } = await supabase.auth.getUser(token);
+
   if (error) throw new Error(`auth.getUser failed: ${error.message}`);
-  if (!data?.user) throw new Error("Not authenticated");
+  if (!data?.user) throw new Error("User not found from token");
 
   return data.user;
 }
 
-export async function getOrCreateProfile(req: Request) {
-  const supabase = getSupabaseClient(req);
-  const user = await getUser(req);
+/**
+ * Create or retrieve a Stripe customer for the logged-in Supabase user.
+ * Stores stripe_customer_id on profiles table (or wherever you store it).
+ */
+export async function createOrRetrieveCustomer(req: Request, stripe: StripeLike) {
+  const supabase = createSupabaseAdminClient();
+  const user = await getUserFromRequest(req);
 
-  const { data: existing, error: selectError } = await supabase
+  // ✅ Adjust table/column names if yours are different
+  const { data: profile, error: profileErr } = await supabase
     .from("profiles")
-    .select("*")
+    .select("id, email, stripe_customer_id")
     .eq("id", user.id)
     .maybeSingle();
 
-  if (selectError) throw new Error(`profiles select failed: ${selectError.message}`);
-  if (existing) return existing;
+  if (profileErr) throw new Error(`profiles select failed: ${profileErr.message}`);
 
-  // Minimal insert that matches your table (id + role)
-  const { data: created, error: insertError } = await supabase
-    .from("profiles")
-    .insert({ id: user.id, role: "USER" })
-    .select("*")
-    .single();
-
-  if (insertError) throw new Error(`profiles insert failed: ${insertError.message}`);
-
-  return created;
-}
-
-export async function createOrRetrieveCustomer(req: Request, stripe: any) {
-  const supabase = getSupabaseClient(req);
-  const user = await getUser(req);
-
-  const profile = await getOrCreateProfile(req);
-
-  if (profile?.stripe_customer_id) {
-    return profile.stripe_customer_id as string;
+  // If profile row doesn’t exist, create it (optional, depends on your schema)
+  if (!profile) {
+    const { error: insertErr } = await supabase.from("profiles").insert({
+      id: user.id,
+      email: user.email,
+      stripe_customer_id: null,
+    });
+    if (insertErr) throw new Error(`profiles insert failed: ${insertErr.message}`);
   }
 
+  // Re-fetch to ensure we have stripe_customer_id
+  const { data: profile2, error: profileErr2 } = await supabase
+    .from("profiles")
+    .select("id, email, stripe_customer_id")
+    .eq("id", user.id)
+    .single();
+
+  if (profileErr2) throw new Error(`profiles re-select failed: ${profileErr2.message}`);
+
+  if (profile2.stripe_customer_id) {
+    return profile2.stripe_customer_id;
+  }
+
+  // Create Stripe customer
   const customer = await stripe.customers.create({
     email: user.email ?? undefined,
-    metadata: { supabase_uid: user.id },
+    metadata: { supabase_user_id: user.id },
   });
 
-  const { error: updateError } = await supabase
+  // Save Stripe customer id
+  const { error: updateErr } = await supabase
     .from("profiles")
     .update({ stripe_customer_id: customer.id })
     .eq("id", user.id);
 
-  if (updateError) {
-    throw new Error(`profiles update stripe_customer_id failed: ${updateError.message}`);
-  }
+  if (updateErr) throw new Error(`profiles update failed: ${updateErr.message}`);
 
-  return customer.id as string;
+  return customer.id;
 }

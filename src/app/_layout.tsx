@@ -13,14 +13,18 @@ import { ProductsProvider } from '@/providers/ProductsProvider';
 export default function RootLayout() {
   const [queryClient] = useState(() => new QueryClient());
 
-  const publishableKey = process.env.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY;
+  const publishableKey = (process.env.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY ?? '').trim();
 
   if (!publishableKey) {
     throw new Error('Missing EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY in .env');
   }
 
   return (
-    <StripeProvider publishableKey={publishableKey}>
+    <StripeProvider
+      publishableKey={publishableKey}
+      // Optional (only needed if you later enable Apple Pay)
+      merchantIdentifier="merchant.com.foodorderingapp"
+    >
       <QueryClientProvider client={queryClient}>
         <AuthProvider>
           <ProductsProvider>
