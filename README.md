@@ -1,23 +1,21 @@
-🍔 Food Ordering App
-
+🍔 Food Ordering App  
 Expo · React Native · Supabase · Stripe (Test Mode)
 
-This repository contains my take-home submission for the Food Ordering App.
-The project is a full-stack mobile application built using Expo Router with a Supabase backend, Stripe test payments, and an optional AI Order Assistant.
+This repository contains my **take-home submission** for the Food Ordering App.
+It is a **full-stack mobile application** built with Expo Router, Supabase, Stripe test payments, and an optional AI-powered Order Assistant.
 
-All work is finalized and submitted on the submission branch.
+All work is finalized and submitted on the **submission branch**.
 
-🔀 Branch to Review (Final Submission)
+---
 
-Branch: submission/nevryk-takehome (default)
+## 🔀 Branch to Review (Final Submission)
 
-If running locally:
+**Branch:** `submission/nevryk-takehome` (default)
 
+```bash
 git checkout submission/nevryk-takehome
-
 🧱 Tech Stack
 Mobile App
-
 Expo + React Native
 
 TypeScript
@@ -29,7 +27,6 @@ Supabase (Auth, PostgreSQL, Storage)
 Stripe PaymentSheet (Test Mode)
 
 Backend (AI Assistant)
-
 Node.js + Express
 
 Mastra Agent
@@ -40,12 +37,11 @@ OpenAI model (via AI SDK)
 
 📱 Core App Features
 User Features
-
 User authentication (Supabase Auth)
 
 Browse menu items
 
-Product details and size selection
+Product detail view with size selection
 
 Cart management (add, update, remove items)
 
@@ -53,145 +49,131 @@ Secure checkout using Stripe test payments
 
 View order history
 
-Customer support ticket submission
+Submit customer support tickets
 
 Admin Features
-
-Product management
-
-View and manage support tickets
-
-Close resolved tickets
-
-✨ Custom Features Implemented
-1️⃣ Best Seller Badge
-
-Popular products are highlighted with a “Best Seller” badge on the menu screen to improve product visibility and user experience.
-
-2️⃣ Loyalty Reward System
-
-A built-in customer loyalty feature:
-
-Displays order progress (1 → 5) in the UI
-
-After completing 5 successful orders, the 6th order automatically receives 50% off
-
-Progress and reward state update dynamically for the logged-in user
-
-3️⃣ Customer Support Ticket System
-
-A complete user → admin support workflow:
-
-Users submit tickets with subject and message
-
-Tickets are stored in Supabase and linked to the user
-
-Admin can:
-
-View all tickets
+View all support tickets
 
 See ticket metadata (user, timestamp, status)
 
-Mark tickets as Closed
+Update ticket status (Open → Closed)
+
+✨ Custom Features Implemented
+1️⃣ Best Seller Badge
+Popular products are highlighted with a “Best Seller” badge on the menu screen to improve discoverability and UX.
+
+2️⃣ Loyalty Reward System
+A customer loyalty feature built end-to-end:
+
+Displays order progress (1 → 5)
+
+After 5 successful paid orders, the 6th order automatically receives 50% off
+
+Progress updates dynamically per user
+
+Discount is applied automatically at checkout
+
+3️⃣ Customer Support Ticket System
+A complete user → admin workflow:
+
+Users submit support tickets with subject & message
+
+Tickets are stored in Supabase and linked to the user
+
+Admin can view and close tickets from the dashboard
 
 🤖 AI Order Assistant (Optional Feature)
-
-This project includes an AI Order Assistant that helps users interact with the menu and cart using natural language.
+This project includes an AI-powered Order Assistant that allows users to interact with the menu and cart using natural language.
 
 Key Characteristics
-
 Built using Mastra Agent
 
-Tool-grounded (no hallucinated menu items)
+Tool-grounded (no hallucinated items)
 
 All recommendations come from real Supabase products
 
-Cart changes persist to Supabase and sync with the app UI
+Cart changes persist to Supabase and sync with the UI
 
 Supports multi-turn conversations
 
-Example Capabilities
-
-“Show me pizza options”
-
-“Add the first one to my cart”
-
-“Show my cart”
-
-“Update the quantity”
-
-“Remove that item”
-
-The assistant interacts with the same cart used by the mobile app, ensuring consistency between AI actions and UI state.
+Example AI Commands (Try These)
+sql
+Copy code
+Show me pizza options
+Add the first one to my cart
+Show my cart
+Increase the quantity
+Remove the second item
+Checkout
+The AI assistant interacts with the same cart used by the mobile app, ensuring consistency between AI actions and UI state.
 
 📂 Project Structure
+graphql
+Copy code
 food-ordering-app/
 ├── src/            # Expo mobile app
 ├── backend/        # Node + Express + AI Assistant
 ├── supabase/       # Supabase schema & migrations
+├── screenshots/    # App screenshots for review
 ├── .env.example    # Environment variable template
 └── README.md
-
 ▶️ Running the App Locally
 1️⃣ Install Dependencies
+bash
+Copy code
 npm install
-
 2️⃣ Environment Setup
-
-Create a .env file from the template:
-
+bash
+Copy code
 cp .env.example .env
+Fill in:
 
-
-Fill in the required values:
-
+ini
+Copy code
 EXPO_PUBLIC_SUPABASE_URL=your_supabase_url
 EXPO_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
 EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY=your_stripe_publishable_key
-
-
 .env is intentionally not committed.
-.env.example is provided as a reference.
 
 3️⃣ Start the App
+bash
+Copy code
 npx expo start -c
-
-
-Expo does not automatically reload environment variables.
-Always restart with -c after modifying .env.
+Expo does not reload environment variables automatically.
+Always restart with -c after editing .env.
 
 💳 Stripe Test Payments
-
-Use the following test card during checkout:
+Use this test card at checkout:
 
 Card Number: 4242 4242 4242 4242
 
-Expiry Date: Any future date
+Expiry: Any future date
 
 CVC: 123
 
 ZIP: 12345
 
 📚 What I Learned
+Structuring a production-ready Expo Router app
 
-Structuring a production-ready Expo Router application
+Managing auth, data, and storage with Supabase
 
-Managing authentication, data, and storage with Supabase
+Implementing real-world UX features (loyalty, support workflows)
 
-Implementing real-world UX features like loyalty rewards and support workflows
+Stripe PaymentSheet integration with proper state handling
 
-Integrating Stripe test payments with proper state handling
+Designing a tool-grounded AI assistant tied to live data
 
-Designing a tool-grounded AI assistant that safely interacts with live data
-
-Keeping frontend, backend, and AI logic cleanly separated
+Clean separation between frontend, backend, and AI logic
 
 📌 Notes for Reviewers
-
 Project runs entirely in test mode
 
-No secrets are committed to the repository
+No secrets are committed
 
-All features are implemented and accessible through the app UI
+All features are accessible via the app UI
 
 Final submission branch: submission/nevryk-takehome
+
+markdown
+Copy code
