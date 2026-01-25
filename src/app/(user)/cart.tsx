@@ -12,7 +12,12 @@ import {
   View,
 } from "react-native";
 
-import { fetchCartFromBackend, type CartItemDto } from "@/api/cart";
+import {
+  addToCartOnBackend,
+  fetchCartFromBackend,
+  removeFromCartOnBackend,
+  type CartItemDto,
+} from "@/api/cart";
 import { payWithStripe } from "@/lib/stripe";
 import { supabase } from "@/lib/supabase";
 import { useCart } from "@/providers/CartProvider";
@@ -40,6 +45,9 @@ export default function CartScreen() {
 
   // ✅ prevents immediate re-load from repopulating cart after successful checkout
   const skipNextReloadRef = useRef(false);
+
+  // ✅ prevent double tapping +/- rapidly
+  const qtyInFlightRef = useRef<Record<string, boolean>>({});
 
   const total = useMemo(() => {
     return items.reduce((sum, i) => sum + i.products.price * i.quantity, 0);
@@ -103,6 +111,61 @@ export default function CartScreen() {
       setRefreshing(false);
     }
   }, [load, refreshLoyalty]);
+
+  // ✅ NEW: + button
+  const onInc = useCallback(
+    async (item: CartItemDto) => {
+      try {
+        if (qtyInFlightRef.current[item.id]) return;
+        qtyInFlightRef.current[item.id] = true;
+
+        const { data: userData, error: userErr } = await supabase.auth.getUser();
+        if (userErr || !userData?.user) throw new Error("Please sign in again.");
+        const userId = userData.user.id;
+
+        await addToCartOnBackend({
+          userId,
+          productId: item.products.id,
+          quantity: 1,
+          size: item.size ?? "M",
+        });
+
+        await load();
+      } catch (e: any) {
+        Alert.alert("Update failed", e?.message ?? "Could not increase quantity");
+      } finally {
+        qtyInFlightRef.current[item.id] = false;
+      }
+    },
+    [load]
+  );
+
+  // ✅ NEW: - button
+  const onDec = useCallback(
+    async (item: CartItemDto) => {
+      try {
+        if (qtyInFlightRef.current[item.id]) return;
+        qtyInFlightRef.current[item.id] = true;
+
+        const { data: userData, error: userErr } = await supabase.auth.getUser();
+        if (userErr || !userData?.user) throw new Error("Please sign in again.");
+        const userId = userData.user.id;
+
+        await removeFromCartOnBackend({
+          userId,
+          productId: item.products.id,
+          size: item.size ?? "M",
+        });
+
+        await load();
+      } catch (e: any) {
+        Alert.alert("Update failed", e?.message ?? "Could not decrease quantity");
+      } finally {
+        qtyInFlightRef.current[item.id] = false;
+      }
+    },
+    [load]
+  );
 
   const onCheckout = useCallback(async () => {
     if (!items.length) return;
@@ -370,9 +433,57 @@ export default function CartScreen() {
                     Size: {item.size ?? "-"} • Qty: {item.quantity}
                   </Text>
 
-                  <Text style={{ marginTop: 6, fontWeight: "700" }}>
-                    ${(item.products.price * item.quantity).toFixed(2)}
-                  </Text>
+                  <View
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      marginTop: 10,
+                    }}
+                  >
+                    <Text style={{ fontWeight: "700" }}>
+                      ${(item.products.price * item.quantity).toFixed(2)}
+                    </Text>
+
+                    {/* ✅ NEW: Quantity controls */}
+                    <View style={{ flexDirection: "row", alignItems: "center" }}>
+                      <Pressable
+                        onPress={() => onDec(item)}
+                        style={{
+                          width: 34,
+                          height: 34,
+                          borderRadius: 10,
+                          borderWidth: 1,
+                          borderColor: "#e5e7eb",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          marginRight: 10,
+                        }}
+                      >
+                        <Text style={{ fontSize: 18, fontWeight: "800" }}>−</Text>
+                      </Pressable>
+
+                      <Text style={{ minWidth: 20, textAlign: "center", fontWeight: "800" }}>
+                        {item.quantity}
+                      </Text>
+
+                      <Pressable
+                        onPress={() => onInc(item)}
+                        style={{
+                          width: 34,
+                          height: 34,
+                          borderRadius: 10,
+                          borderWidth: 1,
+                          borderColor: "#e5e7eb",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          marginLeft: 10,
+                        }}
+                      >
+                        <Text style={{ fontSize: 18, fontWeight: "800" }}>+</Text>
+                      </Pressable>
+                    </View>
+                  </View>
                 </View>
               )}
               contentContainerStyle={{ paddingBottom: 8 }}

@@ -12,6 +12,7 @@ import { removeCartItemTool } from "./mastra/tools/removeCartItemTool";
 import { searchMenuTool } from "./mastra/tools/searchMenuTool";
 import { updateQuantityTool } from "./mastra/tools/updateQuantityTool";
 
+import { clearActiveCart } from "./db/clearCart";
 import { getTraces, runWithTraces } from "./mastra/toolTracing";
 
 const app = express();
@@ -31,6 +32,20 @@ const ChatBodySchema = z.object({
       })
     )
     .optional(),
+});
+
+const AddToCartSchema = z.object({
+  userId: z.string().min(1),
+  productId: z.number().int().positive(),
+  quantity: z.number().int().positive().optional(),
+  size: z.any().optional(), // normalize inside tool
+});
+
+// ✅ NEW schema for decrement/remove
+const RemoveFromCartSchema = z.object({
+  userId: z.string().min(1),
+  productId: z.number().int().positive(),
+  size: z.any().optional(), // normalize inside
 });
 
 type ChatMsg = { role: "user" | "assistant" | "system"; content: string };
@@ -97,7 +112,6 @@ function formatCartClean(cart: any) {
 
 /**
  * Size parsing (DB-valid): S, M, L, XL
- * Users may say: small/medium/regular/large/xl/extra large OR S/M/L/XL
  */
 function normalizeSizeToken(token: string): "S" | "M" | "L" | "XL" {
   const t = token.trim().toLowerCase();
@@ -133,13 +147,11 @@ function extractSizeAndCleanQuery(addTextLower: string): {
   size: "S" | "M" | "L" | "XL";
   query: string;
 } {
-  // Normalize multi-word variants first so regex can catch them
   let cleaned = addTextLower
     .replace(/\bextra[\s-]?large\b/gi, "xl")
     .replace(/\bx[\s-]?large\b/gi, "xl")
     .trim();
 
-  // Match size optionally preceded by "size"
   const sizeRegex =
     /\b(size\s+)?(small|sm|s|medium|med|m|regular|reg|normal|standard|large|lg|l|xl)\b/i;
 
@@ -151,10 +163,7 @@ function extractSizeAndCleanQuery(addTextLower: string): {
     cleaned = cleaned.replace(sizeRegex, " ");
   }
 
-  // Remove stray "size" word if left behind
   cleaned = cleaned.replace(/\bsize\b/gi, " ");
-
-  // Collapse spaces
   cleaned = cleaned.replace(/\s+/g, " ").trim();
 
   return { size, query: cleaned };
@@ -225,13 +234,17 @@ function isSuggestions(text: string) {
 function isSpicyUnder(text: string) {
   const t = text.toLowerCase();
   return (
-    t.includes("spicy") && (t.includes("under") || t.includes("below") || t.includes("<="))
+    t.includes("spicy") &&
+    (t.includes("under") || t.includes("below") || t.includes("<="))
   );
 }
 
 function isGenericUnder(text: string) {
   const t = text.toLowerCase();
-  return (t.includes("under") || t.includes("below") || t.includes("<=")) && !t.includes("spicy");
+  return (
+    (t.includes("under") || t.includes("below") || t.includes("<=")) &&
+    !t.includes("spicy")
+  );
 }
 
 // store last shown suggestions per user
@@ -242,7 +255,8 @@ function formatSuggestionsClean(list: Suggestion[]) {
   if (!list.length) return "No matching items found.";
 
   const lines = list.slice(0, 5).map((p, i) => {
-    const priceTxt = typeof p.price === "number" ? ` - $${p.price.toFixed(2)}` : "";
+    const priceTxt =
+      typeof p.price === "number" ? ` - $${p.price.toFixed(2)}` : "";
     return `${i + 1}. ${p.name}${priceTxt}`;
   });
 
@@ -264,7 +278,9 @@ async function toolSearchAndFilter(query: string, priceCap: number | null) {
   const filtered =
     priceCap == null
       ? cleaned
-      : cleaned.filter((p) => typeof p.price === "number" && p.price <= priceCap);
+      : cleaned.filter(
+          (p) => typeof p.price === "number" && p.price <= priceCap
+        );
 
   return filtered;
 }
@@ -286,12 +302,138 @@ app.get("/cart", async (req, res) => {
     const traces = getTraces();
 
     if ((result as any).cart?.error) {
-      return res.status(500).json({ ok: false, error: (result as any).cart.error, traces });
+      return res
+        .status(500)
+        .json({ ok: false, error: (result as any).cart.error, traces });
     }
 
     return res.json({ ok: true, ...(result as any).cart, traces });
   } catch (e: any) {
-    return res.status(500).json({ ok: false, error: e?.message ?? "Server error" });
+    return res
+      .status(500)
+      .json({ ok: false, error: e?.message ?? "Server error" });
+  }
+});
+
+// ✅ REQUIRED: Menu uses this endpoint
+app.post("/cart/add", async (req, res) => {
+  try {
+    const parsed = AddToCartSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({
+        ok: false,
+        error: parsed.error.issues?.[0]?.message ?? "Invalid request",
+      });
+    }
+
+    const { userId, productId, quantity, size } = parsed.data;
+    const effectiveUserId = toUuidLikeUserId(userId);
+
+    const result = await runWithTraces(async () => {
+      const r = await addToCartTool.execute({
+        userId: effectiveUserId,
+        productId,
+        quantity: quantity ?? 1,
+        size,
+      });
+      return { r };
+    });
+
+    const traces = getTraces();
+    return res.json({ ok: true, ...(result as any).r, traces });
+  } catch (e: any) {
+    console.error("/cart/add error:", e);
+    return res
+      .status(500)
+      .json({ ok: false, error: e?.message ?? "Server error" });
+  }
+});
+
+// ✅ NEW: decrement quantity by 1 (or remove item if it becomes 0)
+app.post("/cart/remove", async (req, res) => {
+  try {
+    const parsed = RemoveFromCartSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({
+        ok: false,
+        error: parsed.error.issues?.[0]?.message ?? "Invalid request",
+      });
+    }
+
+    const { userId, productId, size } = parsed.data;
+    const effectiveUserId = toUuidLikeUserId(userId);
+
+    const normalizedSize =
+      typeof size === "string" && size.trim() ? normalizeSizeToken(size) : "M";
+
+    const result = await runWithTraces(async () => {
+      const cart = await getCartTool.execute({ userId: effectiveUserId });
+      const items: any[] = cart?.items ?? [];
+
+      if (!items.length) return { cart };
+
+      const match = items.find(
+        (it) =>
+          Number(it?.product_id ?? it?.products?.id) === productId &&
+          String(it?.size ?? "M") === normalizedSize
+      );
+
+      if (!match) return { cart };
+
+      const currentQty = Number(match.quantity ?? 1);
+
+      if (currentQty > 1) {
+        await updateQuantityTool.execute({
+          userId: effectiveUserId,
+          cartItemId: match.id,
+          quantity: currentQty - 1,
+        });
+      } else {
+        await removeCartItemTool.execute({
+          userId: effectiveUserId,
+          cartItemId: match.id,
+        });
+      }
+
+      const updatedCart = await getCartTool.execute({ userId: effectiveUserId });
+      return { cart: updatedCart };
+    });
+
+    const traces = getTraces();
+
+    if ((result as any).cart?.error) {
+      return res
+        .status(500)
+        .json({ ok: false, error: (result as any).cart.error, traces });
+    }
+
+    return res.json({ ok: true, ...(result as any).cart, traces });
+  } catch (e: any) {
+    console.error("/cart/remove error:", e);
+    return res
+      .status(500)
+      .json({ ok: false, error: e?.message ?? "Server error" });
+  }
+});
+
+// ✅ Clear active cart (backend source-of-truth)
+app.post("/cart/clear", async (req, res) => {
+  try {
+    const userIdRaw = String(req.body?.userId ?? "").trim();
+    if (!userIdRaw) {
+      return res.status(400).json({ ok: false, error: "userId is required" });
+    }
+
+    const effectiveUserId = toUuidLikeUserId(userIdRaw);
+
+    await clearActiveCart(effectiveUserId);
+
+    return res.json({ ok: true });
+  } catch (e: any) {
+    console.error("/cart/clear error:", e);
+    return res
+      .status(500)
+      .json({ ok: false, error: e?.message ?? "Server error" });
   }
 });
 
@@ -314,38 +456,44 @@ app.post("/ai/chat", async (req, res) => {
     const lower = text.toLowerCase();
 
     const result = await runWithTraces(async () => {
-      // 1) show cart
       if (isShowCart(text)) {
         const cart = await getCartTool.execute({ userId: effectiveUserId });
         return { message: formatCartClean(cart), mode: "show_cart" };
       }
 
-      // 2) suggestions (default pizza)
       if (isSuggestions(text)) {
         const list = await toolSearchAndFilter("pizza", null);
         lastSuggestionsByUser.set(effectiveUserId, list);
-        return { message: formatSuggestionsClean(list.slice(0, 2)), mode: "suggestions" };
+        return {
+          message: formatSuggestionsClean(list.slice(0, 2)),
+          mode: "suggestions",
+        };
       }
 
-      // 3) spicy under $X
       if (isSpicyUnder(text)) {
         const cap = extractPriceCap(text) ?? 15;
         const list = await toolSearchAndFilter("spicy", cap);
         lastSuggestionsByUser.set(effectiveUserId, list);
-        return { message: formatSuggestionsClean(list.slice(0, 2)), mode: "spicy_under" };
+        return {
+          message: formatSuggestionsClean(list.slice(0, 2)),
+          mode: "spicy_under",
+        };
       }
 
-      // 4) under $X (generic)
       if (isGenericUnder(text)) {
         const cap = extractPriceCap(text);
         const list = await toolSearchAndFilter("pizza", cap);
         lastSuggestionsByUser.set(effectiveUserId, list);
-        return { message: formatSuggestionsClean(list.slice(0, 2)), mode: "under_cap" };
+        return {
+          message: formatSuggestionsClean(list.slice(0, 2)),
+          mode: "under_cap",
+        };
       }
 
-      // 5) add by ordinal or "add 1/add 2"
       const ordinal = extractOrdinalAdd(lower);
-      const idxFromAddN = lower.match(/^add\s+(\d+)$/) ? extractIndexCommand(lower) : null;
+      const idxFromAddN = lower.match(/^add\s+(\d+)$/)
+        ? extractIndexCommand(lower)
+        : null;
       const addIndex = ordinal ?? idxFromAddN;
 
       if (addIndex != null) {
@@ -368,7 +516,6 @@ app.post("/ai/chat", async (req, res) => {
         return { message: `Added: ${pick.name} (M)`, mode: "add_ok" };
       }
 
-      // 6) increase quantity of first item
       if (extractIncreaseFirst(lower)) {
         const cart = await getCartTool.execute({ userId: effectiveUserId });
         const items: any[] = cart?.items ?? [];
@@ -386,7 +533,6 @@ app.post("/ai/chat", async (req, res) => {
         return { message: `Updated item 1 quantity to ${newQty}.`, mode: "inc_ok" };
       }
 
-      // 7) remove second item
       if (extractRemoveSecond(lower)) {
         const cart = await getCartTool.execute({ userId: effectiveUserId });
         const items: any[] = cart?.items ?? [];
@@ -402,7 +548,6 @@ app.post("/ai/chat", async (req, res) => {
         return { message: "Removed item 2.", mode: "rm2_ok" };
       }
 
-      // 8) remove N (by number)
       const rmIdx = lower.startsWith("remove") ? extractRemoveByNumber(lower) : null;
       if (rmIdx != null) {
         const cart = await getCartTool.execute({ userId: effectiveUserId });
@@ -420,7 +565,6 @@ app.post("/ai/chat", async (req, res) => {
         return { message: `Removed item ${rmIdx}.`, mode: "rm_ok" };
       }
 
-      // 9) add <name> <optional size> (supports small/large/xl anywhere)
       if (lower.startsWith("add ")) {
         const raw = lower.replace(/^add\s+/i, "").trim();
         const { size, query } = extractSizeAndCleanQuery(raw);
@@ -444,7 +588,6 @@ app.post("/ai/chat", async (req, res) => {
         return { message: `Added: ${pick.name} (${size})`, mode: "add_named" };
       }
 
-      // 10) fallback to agent for anything else
       const finalMessages: ChatMsg[] =
         normalizedMsgs.length > 0
           ? normalizedMsgs
