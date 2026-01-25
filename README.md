@@ -174,6 +174,3 @@ No secrets are committed
 All features are accessible via the app UI
 
 Final submission branch: submission/nevryk-takehome
-
-markdown
-Copy code
