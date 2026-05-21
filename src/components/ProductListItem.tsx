@@ -20,7 +20,7 @@ export default function ProductListItem({ product, onPress }: Props) {
           <View style={styles.badge}>
             <Text style={styles.badgeText}>Best Seller ⭐</Text>
           </View>
-        )}
+        )} 
 
         <Image source={{ uri: product.image }} style={styles.image} />
       </View>
